@@ -38,7 +38,10 @@ import ProgressCircle from "./components/ProgressCircle";
 import { departments as defaultDepartments, trendData } from "./data/mockData";
 
 const COMPANY_NAME = "Irshad & Company";
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const RAW_API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = RAW_API_BASE.replace(/\/$/, "").endsWith("/api")
+  ? RAW_API_BASE.replace(/\/$/, "")
+  : `${RAW_API_BASE.replace(/\/$/, "")}/api`;
 
 const navByRole = {
   CEO: [

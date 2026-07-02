@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Area,
@@ -601,24 +601,46 @@ export default function App() {
     return payload;
   };
 
+  const completeLogin = async (payload, toastMessage) => {
+    setToken(payload.token);
+    setCurrentUser(payload.user);
+    setActiveView(firstViewByRole[payload.user.role]);
+    const data = await request("/manage/bootstrap", {}, payload.token);
+    applyServerData(data);
+    setToast(toastMessage || `${payload.user.label} signed in`);
+    return payload.user;
+  };
+
   const login = async (email, password) => {
     try {
       const payload = await request("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password })
       }, "");
-      setToken(payload.token);
-      setCurrentUser(payload.user);
-      setActiveView(firstViewByRole[payload.user.role]);
-      const data = await request("/manage/bootstrap", {}, payload.token);
-      applyServerData(data);
-      setToast(`${payload.user.label} signed in`);
-      return payload.user;
+      return await completeLogin(payload);
     } catch (error) {
       setToast(error.message);
       return null;
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const ssoToken = params.get("ssoToken");
+    const ssoUser = params.get("ssoUser");
+    if (!ssoToken || !ssoUser) return;
+    const paddedUser = ssoUser.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(ssoUser.length / 4) * 4, "=");
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+    completeLogin({
+      token: ssoToken,
+      user: JSON.parse(atob(paddedUser))
+    }, "CEO signed in with SSO").catch((error) => {
+      setCurrentUser(null);
+      setToken("");
+      setToast(error.message || "SSO login failed");
+    });
+  }, []);
 
   const addEmployee = async (event) => {
     event.preventDefault();

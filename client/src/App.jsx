@@ -572,6 +572,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState(null);
+  const [remarkEmployeeId, setRemarkEmployeeId] = useState(null);
 
   const allEmployees = useMemo(() => calculateEmployees(baseEmployees, tasks, attendance), [baseEmployees, tasks, attendance]);
   const employees = useMemo(() => {
@@ -747,10 +748,17 @@ export default function App() {
     }
   };
 
-  const addRemark = (employeeId) => {
-    const remark = window.prompt("Enter CEO remark");
+  const openRemarkForm = (employeeId) => {
+    setRemarkEmployeeId(employeeId);
+  };
+
+  const addRemark = (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const remark = String(form.get("remark")).trim();
     if (!remark) return;
-    setBaseEmployees((items) => items.map((employee) => employee.id === employeeId ? { ...employee, ceoRemark: remark } : employee));
+    setBaseEmployees((items) => items.map((employee) => employee.id === remarkEmployeeId ? { ...employee, ceoRemark: remark } : employee));
+    setRemarkEmployeeId(null);
     setToast("CEO remark saved");
   };
 
@@ -798,6 +806,7 @@ export default function App() {
   });
 
   const assignableEmployees = allEmployees.filter((employee) => employee.department === currentUser.department && employee.attendance !== "ABSENT");
+  const remarkEmployee = remarkEmployeeId ? allEmployees.find((employee) => employee.id === remarkEmployeeId) : null;
 
   const actions = {
     setAttendance: updateAttendance,
@@ -807,11 +816,11 @@ export default function App() {
   };
 
   const views = {
-    ceo: <CEODashboard currentUser={currentUser} employees={employees} departments={visibleDepartments} onRemark={addRemark} onExport={() => exportReport({ type: "company", title: "Company Report" })} />,
+    ceo: <CEODashboard currentUser={currentUser} employees={employees} departments={visibleDepartments} onRemark={openRemarkForm} onExport={() => exportReport({ type: "company", title: "Company Report" })} />,
     head: <HeadDashboard currentUser={currentUser} employees={employees} tasks={tasks} attendance={attendance} onOpenEmployee={() => setModal("employee")} onOpenTask={() => setModal("task")} actions={actions} />,
     employee: <EmployeeDashboard currentUser={currentUser} employees={employees} tasks={tasks} />,
     departments: <DepartmentsView departments={visibleDepartments} />,
-    employees: <EmployeesView employees={employees} currentUser={currentUser} onOpenEmployee={() => setModal("employee")} onDeleteEmployee={deleteEmployee} onRemark={addRemark} />,
+    employees: <EmployeesView employees={employees} currentUser={currentUser} onOpenEmployee={() => setModal("employee")} onDeleteEmployee={deleteEmployee} onRemark={openRemarkForm} />,
     attendance: <AttendanceView currentUser={currentUser} employees={employees} attendance={attendance} onAttendance={updateAttendance} />,
     tasks: <TasksView currentUser={currentUser} employees={employees} tasks={tasks} onOpenTask={() => setModal("task")} onStatus={updateTaskStatus} onDescription={updateTaskDescription} />,
     reports: <ReportsView currentUser={currentUser} onExport={exportReport} />,
@@ -836,6 +845,7 @@ export default function App() {
       {toast && <button className="toast" onClick={() => setToast("")}>{toast}</button>}
       {modal === "employee" && <Modal title="Create Employee + Login Credentials" onClose={() => setModal(null)}><form className="stack-form" onSubmit={addEmployee}><input name="name" required placeholder="Employee Name" /><input name="employeeCode" required placeholder="Employee ID" /><input name="designation" required placeholder="Designation" /><input name="email" type="email" required placeholder="Employee login email" /><input name="password" type="password" required minLength="6" placeholder="Employee login password" /><button className="primary-button"><Save size={16} /> Save Employee</button></form></Modal>}
       {modal === "task" && <Modal title="Assign Task to Present Employee" onClose={() => setModal(null)}>{assignableEmployees.length ? <form className="stack-form" onSubmit={addTask}><select name="employeeId">{assignableEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select><input name="title" required placeholder="Task Title" /><textarea name="description" required placeholder="Task Description" /><select name="status"><option>Done</option><option>In Progress</option><option>Not Done</option></select><input name="reason" placeholder="Reason / Delay note" /><button className="primary-button"><Save size={16} /> Save Task</button></form> : <EmptyState title="No present employees" text="Mark an employee present before assigning tasks." />}</Modal>}
+      {remarkEmployee && <Modal title="CEO Remark" onClose={() => setRemarkEmployeeId(null)}><form className="stack-form remark-form" onSubmit={addRemark}><div className="remark-profile"><div className="avatar">{remarkEmployee.name.split(" ").map((part) => part[0]).join("")}</div><div><strong>{remarkEmployee.name}</strong><span>{remarkEmployee.employeeCode} / {remarkEmployee.department}</span></div></div><label>Executive note<textarea name="remark" required defaultValue={remarkEmployee.ceoRemark === "No CEO remark yet." ? "" : remarkEmployee.ceoRemark} placeholder="Write a concise CEO remark for this employee..." autoFocus /></label><div className="modal-actions"><button type="button" onClick={() => setRemarkEmployeeId(null)}>Cancel</button><button className="primary-button"><Save size={16} /> Save Remark</button></div></form></Modal>}
     </>
   );
 }

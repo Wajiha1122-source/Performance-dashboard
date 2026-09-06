@@ -2,6 +2,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE role_name AS ENUM ('CEO', 'DEPARTMENT_HEAD', 'EMPLOYEE');
 CREATE TYPE task_status AS ENUM ('DONE', 'IN_PROGRESS', 'NOT_DONE');
+CREATE TYPE task_priority AS ENUM ('normal', 'medium', 'high');
 CREATE TYPE attendance_status AS ENUM ('PRESENT', 'ABSENT');
 CREATE TYPE report_period AS ENUM ('DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'CUSTOM');
 
@@ -70,6 +71,7 @@ CREATE TABLE tasks (
   description TEXT,
   status task_status NOT NULL DEFAULT 'NOT_DONE',
   reason TEXT,
+  priority task_priority NOT NULL DEFAULT 'normal',
   task_date DATE NOT NULL,
   added_by UUID REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -100,8 +102,10 @@ CREATE TABLE ceo_remarks (
   ceo_user_id UUID NOT NULL REFERENCES users(id),
   remark TEXT NOT NULL,
   rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+  remark_date DATE NOT NULL DEFAULT CURRENT_DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX idx_ceo_remark_employee_date ON ceo_remarks(employee_id, remark_date);
 
 CREATE TABLE notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -32,6 +32,7 @@ const taskSchema = z.object({
   reason: z.string().optional().default(""),
   date: z.string().date().optional()
 });
+const batchTaskSchema = z.object({ date: z.string().date().optional(), tasks: z.array(z.object({ title: z.string().min(1).max(180), description: z.string().min(1) })).min(1).max(30) });
 
 const taskStatusMap = {
   Done: "DONE",
@@ -74,7 +75,7 @@ async function loadDashboardData() {
 
   const tasks = await query(
     `SELECT t.id, t.employee_id AS "employeeId", u.name AS owner, d.name AS department, t.title,
-            COALESCE(t.description, '') AS description, t.status, COALESCE(t.reason, '') AS reason,
+            COALESCE(t.description, '') AS description, t.status, COALESCE(t.reason, '') AS reason, t.priority,
             t.task_date AS "taskDate", t.created_at AS "createdAt"
      FROM tasks t
      JOIN employees e ON e.id = t.employee_id
@@ -88,12 +89,14 @@ async function loadDashboardData() {
      FROM attendance
      WHERE attendance_date = CURRENT_DATE`
   );
+  const remarks = await query(`SELECT employee_id AS "employeeId", remark_date AS date, remark FROM ceo_remarks ORDER BY created_at DESC`);
 
   return {
     departments: departments.rows,
     employees: employees.rows,
     tasks: tasks.rows.map((task) => ({ ...task, status: reverseTaskStatusMap[task.status] })),
-    attendance: Object.fromEntries(attendance.rows.map((row) => [row.employeeId, row.status]))
+    attendance: Object.fromEntries(attendance.rows.map((row) => [row.employeeId, row.status])),
+    comments: Object.fromEntries(remarks.rows.map((row) => [`${row.employeeId}:${String(row.date).slice(0, 10)}`, row.remark]))
   };
 }
 
@@ -104,6 +107,18 @@ router.get("/bootstrap", authenticate, async (_req, res, next) => {
     return next(error);
   }
 });
+
+router.post("/tasks/batch", authenticate, authorize("EMPLOYEE"), validate(batchTaskSchema), async (req, res, next) => {
+  const client = await pool.connect();
+  try { await client.query("BEGIN"); const employee = await client.query("SELECT id, department_id FROM employees WHERE user_id=$1 AND is_active=true", [req.user.sub]); if (!employee.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "Employee profile not found." }); } for (const task of req.body.tasks) await client.query("INSERT INTO tasks (employee_id,department_id,title,description,task_date,added_by) VALUES ($1,$2,$3,$4,$5,$6)", [employee.rows[0].id,employee.rows[0].department_id,task.title,task.description,req.body.date||today(),req.user.sub]); await client.query("COMMIT"); return res.status(201).json({ data: await loadDashboardData() }); }
+  catch (error) { await client.query("ROLLBACK"); return next(error); } finally { client.release(); }
+});
+
+router.patch("/tasks/priority", authenticate, authorize("EMPLOYEE"), async (req, res, next) => {
+  try { const ids=Array.isArray(req.body.taskIds)?req.body.taskIds:[]; if(!ids.length||!["normal","medium","high"].includes(req.body.priority)) return res.status(400).json({message:"Select tasks and a valid priority."}); await query("UPDATE tasks t SET priority=$1,updated_at=NOW() FROM employees e WHERE t.employee_id=e.id AND e.user_id=$2 AND t.id=ANY($3::uuid[])",[req.body.priority,req.user.sub,ids]); return res.json({data:await loadDashboardData()}); } catch(error){return next(error);}
+});
+
+router.post("/comments", authenticate, authorize("CEO"), async (req,res,next)=>{try{if(!req.body.employeeId||!req.body.date||!String(req.body.remark||"").trim())return res.status(400).json({message:"Employee, date, and comment are required."});await query("INSERT INTO ceo_remarks (employee_id,ceo_user_id,remark,remark_date) VALUES ($1,$2,$3,$4) ON CONFLICT (employee_id,remark_date) DO UPDATE SET remark=EXCLUDED.remark,ceo_user_id=EXCLUDED.ceo_user_id,created_at=NOW()",[req.body.employeeId,req.user.sub,req.body.remark.trim(),req.body.date]);return res.json({data:await loadDashboardData()});}catch(error){return next(error);}});
 
 router.post("/employees", authenticate, authorize("DEPARTMENT_HEAD"), validate(employeeSchema), async (req, res, next) => {
   const client = await pool.connect();
@@ -200,7 +215,7 @@ router.post("/tasks", authenticate, authorize("DEPARTMENT_HEAD"), validate(taskS
   }
 });
 
-router.patch("/tasks/:id", authenticate, authorize("DEPARTMENT_HEAD"), async (req, res, next) => {
+router.patch("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req, res, next) => {
   try {
     const fields = [];
     const values = [];
@@ -212,18 +227,22 @@ router.patch("/tasks/:id", authenticate, authorize("DEPARTMENT_HEAD"), async (re
       values.push(req.body.description);
       fields.push(`description = $${values.length}`);
     }
+    if (typeof req.body.title === "string") { values.push(req.body.title); fields.push(`title = $${values.length}`); }
     if (typeof req.body.reason === "string") {
       values.push(req.body.reason);
       fields.push(`reason = $${values.length}`);
     }
     if (!fields.length) return res.status(400).json({ message: "No task fields provided." });
     values.push(req.params.id);
-    await query(`UPDATE tasks SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length}`, values);
+    values.push(req.user.sub);
+    await query(`UPDATE tasks t SET ${fields.join(", ")}, updated_at = NOW() FROM employees e WHERE t.employee_id=e.id AND t.id = $${values.length - 1} AND e.user_id = $${values.length}`, values);
     return res.json({ data: await loadDashboardData() });
   } catch (error) {
     return next(error);
   }
 });
+
+router.delete("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req,res,next)=>{try{await query("DELETE FROM tasks t USING employees e WHERE t.employee_id=e.id AND e.user_id=$1 AND t.id=$2",[req.user.sub,req.params.id]);return res.json({data:await loadDashboardData()});}catch(error){return next(error);}});
 
 router.delete("/employees/:id", authenticate, authorize("DEPARTMENT_HEAD"), async (req, res, next) => {
   try {

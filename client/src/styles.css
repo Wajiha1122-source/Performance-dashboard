@@ -420,6 +420,29 @@ textarea {
 .task footer {
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+.task-priority {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid #e1d8e3;
+  border-radius: 8px;
+  color: #681878;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #faf7fb;
+}
+.task-priority svg { width: 15px; }
+.task-priority select {
+  border: 0;
+  background: transparent;
+  color: #4f185b;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
 }
 .check {
   width: 22px;

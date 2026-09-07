@@ -166,14 +166,10 @@ function Empty({ title, text }) {
     </div>
   );
 }
-function Task({ task, mode, selected, toggle, edit, del }) {
+function Task({ task, edit, del, setPriority }) {
   return (
-    <article
-      className={`task ${task.priority || "normal"} ${selected ? "selected" : ""}`}
-      onClick={() => mode && toggle(task.id)}
-    >
+    <article className={`task ${task.priority || "normal"}`}>
       <i />
-      {mode && <b className="check">{selected && <Check />}</b>}
       <div>
         <header>
           {task.priority && task.priority !== "normal" && (
@@ -189,8 +185,21 @@ function Task({ task, mode, selected, toggle, edit, del }) {
           })}
         </small>
       </div>
-      {!mode && edit && (
+      {edit && (
         <footer>
+          <label className="task-priority">
+            <Flag />
+            <span>Priority</span>
+            <select
+              value={task.priority || "normal"}
+              onChange={(event) => setPriority(task.id, event.target.value)}
+              aria-label={`Priority for ${task.description}`}
+            >
+              <option value="normal">Normal</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
           <button onClick={() => edit(task)}>
             <Edit3 />
           </button>
@@ -242,15 +251,7 @@ function Employee({ user, tasks, comments, act, busy }) {
     ),
     history = tasks.filter((t) => (t.taskDate || TODAY).slice(0, 10) !== TODAY);
   const [rows, setRows] = useState([{ description: "" }]),
-    [mode, setMode] = useState(null),
-    [selected, setSelected] = useState(new Set()),
     [editing, setEditing] = useState(null);
-  const toggle = (id) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
   return (
     <div className="page">
       <header className="heading">
@@ -259,36 +260,6 @@ function Employee({ user, tasks, comments, act, busy }) {
           <h1>Good day, {user.name.split(" ")[0]}</h1>
           <p>{day(TODAY)} · Keep today’s progress clear and useful.</p>
         </div>
-        {!mode ? (
-          <button className="soft" onClick={() => setMode("high")}>
-            <Flag />
-            Set priority
-          </button>
-        ) : (
-          <div className="priority">
-            <span>
-              {selected.size ? selected.size + " selected" : "Select tasks"}
-            </span>
-            {["high", "medium", "normal"].map((p) => (
-              <button
-                className={mode === p ? p : ""}
-                onClick={() => setMode(p)}
-              >
-                {p}
-              </button>
-            ))}
-            <button
-              className="primary"
-              onClick={() => {
-                act.priority([...selected], mode);
-                setMode(null);
-                setSelected(new Set());
-              }}
-            >
-              Apply
-            </button>
-          </div>
-        )}
       </header>
       <div className="stats">
         <Stat
@@ -390,11 +361,9 @@ function Employee({ user, tasks, comments, act, busy }) {
             {today.map((t) => (
               <Task
                 task={t}
-                mode={mode}
-                selected={selected.has(t.id)}
-                toggle={toggle}
                 edit={setEditing}
                 del={act.del}
+                setPriority={(id, priority) => act.priority([id], priority)}
               />
             ))}
           </div>

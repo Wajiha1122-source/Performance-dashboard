@@ -32,7 +32,7 @@ const taskSchema = z.object({
   reason: z.string().optional().default(""),
   date: z.string().date().optional()
 });
-const batchTaskSchema = z.object({ date: z.string().date().optional(), tasks: z.array(z.object({ title: z.string().min(1).max(180), description: z.string().min(1) })).min(1).max(30) });
+const batchTaskSchema = z.object({ date: z.string().date().optional(), tasks: z.array(z.object({ title: z.string().max(180).optional(), description: z.string().min(1) })).min(1).max(30) });
 
 const taskStatusMap = {
   Done: "DONE",
@@ -110,7 +110,7 @@ router.get("/bootstrap", authenticate, async (_req, res, next) => {
 
 router.post("/tasks/batch", authenticate, authorize("EMPLOYEE"), validate(batchTaskSchema), async (req, res, next) => {
   const client = await pool.connect();
-  try { await client.query("BEGIN"); const employee = await client.query("SELECT id, department_id FROM employees WHERE user_id=$1 AND is_active=true", [req.user.sub]); if (!employee.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "Employee profile not found." }); } for (const task of req.body.tasks) await client.query("INSERT INTO tasks (employee_id,department_id,title,description,task_date,added_by) VALUES ($1,$2,$3,$4,$5,$6)", [employee.rows[0].id,employee.rows[0].department_id,task.title,task.description,req.body.date||today(),req.user.sub]); await client.query("COMMIT"); return res.status(201).json({ data: await loadDashboardData() }); }
+  try { await client.query("BEGIN"); const employee = await client.query("SELECT id, department_id FROM employees WHERE user_id=$1 AND is_active=true", [req.user.sub]); if (!employee.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "Employee profile not found." }); } for (const [index, task] of req.body.tasks.entries()) await client.query("INSERT INTO tasks (employee_id,department_id,title,description,task_date,added_by) VALUES ($1,$2,$3,$4,$5,$6)", [employee.rows[0].id,employee.rows[0].department_id,task.title||`Task ${index+1}`,task.description,req.body.date||today(),req.user.sub]); await client.query("COMMIT"); return res.status(201).json({ data: await loadDashboardData() }); }
   catch (error) { await client.query("ROLLBACK"); return next(error); } finally { client.release(); }
 });
 

@@ -28,8 +28,8 @@ SELECT id, 'Faisal Javed', 'ceo@company.test', '$2a$10$CYGQJLrd3QB1/vsvN4fn8utp.
 FROM roles WHERE name = 'CEO';
 
 INSERT INTO users (role_id, name, email, password_hash)
-SELECT id, 'Wajiha Azeem', 'ithead@company.test', '$2a$10$CYGQJLrd3QB1/vsvN4fn8utp.VqaYEZu1gKTiktIgcTi4V6hRGcbq'
-FROM roles WHERE name = 'DEPARTMENT_HEAD';
+SELECT id, 'Wajiha Azeem', 'wajiha@company.test', '$2a$10$CYGQJLrd3QB1/vsvN4fn8utp.VqaYEZu1gKTiktIgcTi4V6hRGcbq'
+FROM roles WHERE name = 'EMPLOYEE';
 
 INSERT INTO users (role_id, name, email, password_hash)
 SELECT id, 'Finance Head', 'financehead@company.test', '$2a$10$CYGQJLrd3QB1/vsvN4fn8utp.VqaYEZu1gKTiktIgcTi4V6hRGcbq'
@@ -43,9 +43,11 @@ INSERT INTO users (role_id, name, email, password_hash)
 SELECT id, 'IC Sales Head', 'icsaleshead@company.test', '$2a$10$CYGQJLrd3QB1/vsvN4fn8utp.VqaYEZu1gKTiktIgcTi4V6hRGcbq'
 FROM roles WHERE name = 'DEPARTMENT_HEAD';
 
-UPDATE departments
-SET head_user_id = (SELECT id FROM users WHERE email = 'ithead@company.test')
-WHERE name = 'IT Department';
+INSERT INTO employees (user_id, employee_code, department_id, designation, joining_date, email)
+SELECT u.id, 'EMP-IT-001', d.id, 'HOD-IT', CURRENT_DATE, u.email
+FROM users u
+CROSS JOIN departments d
+WHERE u.email = 'wajiha@company.test' AND d.name = 'IT Department';
 
 UPDATE departments
 SET head_user_id = (SELECT id FROM users WHERE email = 'financehead@company.test')

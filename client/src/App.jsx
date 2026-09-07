@@ -261,18 +261,12 @@ function Employee({ user, tasks, comments, act, busy }) {
           <p>{day(TODAY)} · Keep today’s progress clear and useful.</p>
         </div>
       </header>
-      <div className="stats">
+      <div className="stats employee-stats">
         <Stat
           icon={CalendarDays}
           label="Today’s tasks"
           value={today.length}
           note="Current work list"
-        />
-        <Stat
-          icon={Flag}
-          label="High priority"
-          value={today.filter((t) => t.priority === "high").length}
-          note="Needs focus"
         />
         <Stat
           icon={Check}
@@ -410,7 +404,8 @@ function CEO({ employees, tasks, comments, act }) {
     [date, setDate] = useState(TODAY),
     [month, setMonth] = useState(""),
     [q, setQ] = useState(""),
-    [comment, setComment] = useState("");
+    [comment, setComment] = useState(""),
+    [editingComment, setEditingComment] = useState(false);
   const filtered = emp
     ? tasks.filter(
         (t) =>
@@ -486,9 +481,18 @@ function CEO({ employees, tasks, comments, act }) {
               <small>SAVED CEO COMMENT</small>
               <p>{savedComment}</p>
             </div>
+            <button
+              className="edit-comment"
+              onClick={() => {
+                setComment(savedComment);
+                setEditingComment(true);
+              }}
+            >
+              <Edit3 /> Edit
+            </button>
           </section>
         )}
-        {!month && (
+        {!month && (!savedComment || editingComment) && (
           <section className="panel comment">
             <div>
               <small>DAY-LEVEL FEEDBACK</small>
@@ -502,7 +506,10 @@ function CEO({ employees, tasks, comments, act }) {
             />
             <button
               className="primary"
-              onClick={() => act.comment(emp.id, date, comment)}
+              onClick={async () => {
+                await act.comment(emp.id, date, comment);
+                setEditingComment(false);
+              }}
             >
               <Send />
               Save comment
@@ -575,6 +582,7 @@ function CEO({ employees, tasks, comments, act }) {
                   onClick={() => {
                     setEmp(e);
                     setComment(comments[`${e.id}:${TODAY}`] || "");
+                    setEditingComment(false);
                   }}
                 >
                   <b>{ini(e.name)}</b>

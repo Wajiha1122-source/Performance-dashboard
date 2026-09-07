@@ -76,7 +76,7 @@ async function loadDashboardData() {
   const tasks = await query(
     `SELECT t.id, t.employee_id AS "employeeId", u.name AS owner, d.name AS department, t.title,
             COALESCE(t.description, '') AS description, t.status, COALESCE(t.reason, '') AS reason, t.priority,
-            t.task_date AS "taskDate", t.created_at AS "createdAt"
+            TO_CHAR(t.task_date, 'YYYY-MM-DD') AS "taskDate", t.created_at AS "createdAt"
      FROM tasks t
      JOIN employees e ON e.id = t.employee_id
      JOIN users u ON u.id = e.user_id
@@ -89,14 +89,14 @@ async function loadDashboardData() {
      FROM attendance
      WHERE attendance_date = CURRENT_DATE`
   );
-  const remarks = await query(`SELECT employee_id AS "employeeId", remark_date AS date, remark FROM ceo_remarks ORDER BY created_at DESC`);
+  const remarks = await query(`SELECT employee_id AS "employeeId", TO_CHAR(remark_date, 'YYYY-MM-DD') AS date, remark FROM ceo_remarks ORDER BY created_at DESC`);
 
   return {
     departments: departments.rows,
     employees: employees.rows,
     tasks: tasks.rows.map((task) => ({ ...task, status: reverseTaskStatusMap[task.status] })),
     attendance: Object.fromEntries(attendance.rows.map((row) => [row.employeeId, row.status])),
-    comments: Object.fromEntries(remarks.rows.map((row) => [`${row.employeeId}:${String(row.date).slice(0, 10)}`, row.remark]))
+    comments: Object.fromEntries(remarks.rows.map((row) => [`${row.employeeId}:${row.date}`, row.remark]))
   };
 }
 

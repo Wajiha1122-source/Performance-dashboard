@@ -420,6 +420,7 @@ function CEO({ employees, tasks, comments, act }) {
             : (t.taskDate || TODAY).slice(0, 10) === date),
       )
     : [];
+  const savedComment = emp ? comments[`${emp.id}:${date}`] : "";
   if (emp)
     return (
       <div className="page">
@@ -478,6 +479,15 @@ function CEO({ employees, tasks, comments, act }) {
             />
           )}
         </section>
+        {!month && savedComment && (
+          <section className="saved-comment">
+            <MessageSquare />
+            <div>
+              <small>SAVED CEO COMMENT</small>
+              <p>{savedComment}</p>
+            </div>
+          </section>
+        )}
         {!month && (
           <section className="panel comment">
             <div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -620,7 +620,8 @@ function PremiumLoader({ label }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null),
+  const [initialLoading, setInitialLoading] = useState(true),
+    [user, setUser] = useState(null),
     [token, setToken] = useState(""),
     [employees, setEmployees] = useState([]),
     [tasks, setTasks] = useState([]),
@@ -628,6 +629,10 @@ export default function App() {
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false),
     [month, setMonth] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setInitialLoading(false), 1400);
+    return () => window.clearTimeout(timer);
+  }, []);
   const keepLoaderVisible = async (startedAt) => {
     const remaining = 850 - (Date.now() - startedAt);
     if (remaining > 0) {
@@ -722,6 +727,9 @@ export default function App() {
         : tasks,
     [tasks, month],
   );
+  if (initialLoading) {
+    return <PremiumLoader label="Opening Performance…" />;
+  }
   if (!user)
     return (
       <>

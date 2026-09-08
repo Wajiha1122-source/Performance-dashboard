@@ -602,6 +602,23 @@ function CEO({ employees, tasks, comments, act }) {
     </div>
   );
 }
+
+function PremiumLoader({ label }) {
+  return (
+    <div className="premium-loader" role="status" aria-live="polite">
+      <div className="loader-card">
+        <div className="loader-emblem">
+          <span>P</span>
+          <i />
+        </div>
+        <strong>{label}</strong>
+        <small>Please wait a moment</small>
+        <div className="loader-line"><i /></div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null),
     [token, setToken] = useState(""),
@@ -709,34 +726,27 @@ export default function App() {
           }
           busy={busy}
         />
+        {busy && <PremiumLoader label="Preparing your workspace…" />}
         {toast && <div className="toast">{toast}</div>}
       </>
     );
   return (
-    <Layout
-      user={user}
-      logout={() => {
-        setUser(null);
-        setToken("");
-      }}
-    >
-      {user.role === "CEO" ? (
-        <CEO
-          employees={employees}
-          tasks={tasks}
-          comments={comments}
-          act={act}
-        />
-      ) : (
-        <Employee
-          user={user}
-          tasks={visible}
-          comments={comments}
-          act={act}
-          busy={busy}
-        />
-      )}{" "}
-      {toast && <div className="toast">{toast}</div>}
-    </Layout>
+    <>
+      <Layout
+        user={user}
+        logout={() => {
+          setUser(null);
+          setToken("");
+        }}
+      >
+        {user.role === "CEO" ? (
+          <CEO employees={employees} tasks={tasks} comments={comments} act={act} />
+        ) : (
+          <Employee user={user} tasks={visible} comments={comments} act={act} busy={busy} />
+        )}
+        {toast && <div className="toast">{toast}</div>}
+      </Layout>
+      {busy && <PremiumLoader label="Saving your changes…" />}
+    </>
   );
 }

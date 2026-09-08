@@ -628,6 +628,12 @@ export default function App() {
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false),
     [month, setMonth] = useState("");
+  const keepLoaderVisible = async (startedAt) => {
+    const remaining = 850 - (Date.now() - startedAt);
+    if (remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remaining));
+    }
+  };
   const req = async (path, o = {}, tok = token) => {
       const r = await fetch(BASE + path, {
           ...o,
@@ -650,6 +656,7 @@ export default function App() {
       setTimeout(() => setToast(""), 3000);
     },
     login = async (e, p) => {
+      const startedAt = Date.now();
       setBusy(true);
       try {
         const a = await req(
@@ -663,9 +670,11 @@ export default function App() {
       } catch (x) {
         note(x.message);
       }
+      await keepLoaderVisible(startedAt);
       setBusy(false);
     },
     mut = async (path, o, msg) => {
+      const startedAt = Date.now();
       try {
         setBusy(true);
         apply((await req(path, o)).data);
@@ -673,6 +682,7 @@ export default function App() {
       } catch (x) {
         note(x.message);
       }
+      await keepLoaderVisible(startedAt);
       setBusy(false);
     };
   const act = {

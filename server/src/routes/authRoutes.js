@@ -2,10 +2,33 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../config/db.js";
-import { signUser } from "../middleware/auth.js";
+import { authenticate, signUser } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 
 const router = Router();
+
+router.get("/me", authenticate, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT u.id, u.name, u.email, r.name AS role,
+              e.id AS "employeeId", d.name AS department
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       LEFT JOIN employees e ON e.user_id = u.id
+       LEFT JOIN departments d ON d.id = e.department_id OR d.head_user_id = u.id
+       WHERE u.id = $1 AND u.is_active = true
+       LIMIT 1`,
+      [req.user.sub]
+    );
+    const user = result.rows[0];
+    if (!user || user.role !== req.user.role) {
+      return res.status(401).json({ message: "Session expired or account inactive. Please sign in again." });
+    }
+    return res.json({ user });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -51,10 +74,6 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
-});
-
-router.post("/password-reset/request", (req, res) => {
-  return res.json({ message: "Password reset token structure ready. Connect email provider for delivery.", email: req.body.email });
 });
 
 export default router;

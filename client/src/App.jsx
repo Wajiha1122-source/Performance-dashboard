@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -34,10 +34,9 @@ const ini = (n) =>
     .map((x) => x[0])
     .join("")
     .slice(0, 2);
-function Login({ login, reset, busy }) {
+function Login({ login, busy }) {
   const [email, setEmail] = useState("ceo@company.test"),
-    [password, setPassword] = useState(""),
-    [forgot, setForgot] = useState(false);
+    [password, setPassword] = useState("");
   return (
     <main className="auth">
       <section className="auth-brand">
@@ -61,16 +60,12 @@ function Login({ login, reset, busy }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          forgot ? reset(email) : login(email, password);
+          login(email, password);
         }}
       >
         <small>SECURE WORKSPACE</small>
-        <h2>{forgot ? "Recover password" : "Welcome back"}</h2>
-        <p>
-          {forgot
-            ? "We’ll send recovery instructions to your work email."
-            : "Sign in with your unique employee credentials."}
-        </p>
+        <h2>Welcome back</h2>
+        <p>Sign in with your unique employee credentials.</p>
         <label>
           Work email
           <input
@@ -80,28 +75,19 @@ function Login({ login, reset, busy }) {
             required
           />
         </label>
-        {!forgot && (
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength="6"
-            />
-          </label>
-        )}
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength="6"
+          />
+        </label>
         <button className="primary">
           {busy ? <LoaderCircle className="spin" /> : <KeyRound />}
-          {forgot ? "Send recovery link" : "Sign in"}
-        </button>
-        <button
-          type="button"
-          className="link"
-          onClick={() => setForgot(!forgot)}
-        >
-          {forgot ? "Back to sign in" : "Forgot password?"}
+          Sign in
         </button>
       </form>
     </main>
@@ -620,6 +606,7 @@ function PremiumLoader({ label }) {
 }
 
 export default function App() {
+  const ssoStarted = useRef(false);
   const [initialLoading, setInitialLoading] = useState(true),
     [user, setUser] = useState(null),
     [token, setToken] = useState(""),
@@ -690,6 +677,42 @@ export default function App() {
       await keepLoaderVisible(startedAt);
       setBusy(false);
     };
+  useEffect(() => {
+    // React StrictMode replays mount effects; consume the handoff only once.
+    if (ssoStarted.current) return;
+    ssoStarted.current = true;
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    if (!params.has("ssoToken") && !params.has("ssoUser")) return;
+    const ssoToken = params.get("ssoToken");
+    params.delete("ssoToken");
+    params.delete("ssoUser");
+    const remainingHash = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${remainingHash ? `#${remainingHash}` : ""}`,
+    );
+    setBusy(true);
+    const completeSso = async () => {
+      try {
+        if (!ssoToken) throw new Error("SSO login link is incomplete. Please open this app again from the Master Dashboard.");
+        // Resolve identity from the validated session, not editable URL user data.
+        const { user: ssoUser } = await req("/auth/me", {}, ssoToken);
+        if (ssoUser?.role !== "CEO") throw new Error("This SSO link does not grant CEO access.");
+        const data = await req("/manage/bootstrap", {}, ssoToken);
+        apply(data);
+        setToken(ssoToken);
+        setUser(ssoUser);
+      } catch (error) {
+        setUser(null);
+        setToken("");
+        setToast(error.message || "SSO login failed. Please sign in again.");
+      } finally {
+        setBusy(false);
+      }
+    };
+    completeSso();
+  }, []);
   const act = {
     month: setMonth,
     add: (v) =>
@@ -735,13 +758,6 @@ export default function App() {
       <>
         <Login
           login={login}
-          reset={(e) =>
-            mut(
-              "/auth/password-reset/request",
-              { method: "POST", body: JSON.stringify({ email: e }) },
-              "Recovery instructions sent",
-            )
-          }
           busy={busy}
         />
         {busy && <PremiumLoader label="Preparing your workspace…" />}

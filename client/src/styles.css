@@ -683,6 +683,9 @@ textarea {
 .employee-card div {
   flex: 1;
 }
+.department-card h3 { white-space: normal; line-height: 1.4; }
+.department-card { min-height: 100px; }
+.page > .back { margin-bottom: 16px; }
 .employee-card h3,
 .employee-card p {
   margin: 0 0 4px;

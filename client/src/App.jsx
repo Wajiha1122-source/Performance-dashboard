@@ -387,6 +387,7 @@ function Employee({ user, tasks, comments, act, busy }) {
 }
 function CEO({ employees, tasks, comments, act }) {
   const [emp, setEmp] = useState(null),
+    [department, setDepartment] = useState(null),
     [date, setDate] = useState(TODAY),
     [month, setMonth] = useState(""),
     [q, setQ] = useState(""),
@@ -407,7 +408,7 @@ function CEO({ employees, tasks, comments, act }) {
       <div className="page">
         <button className="back" onClick={() => setEmp(null)}>
           <ChevronLeft />
-          All employees
+          {department || "All employees"}
         </button>
         <header className="profile">
           <b>{ini(emp.name)}</b>
@@ -504,25 +505,29 @@ function CEO({ employees, tasks, comments, act }) {
         )}
       </div>
     );
-  const submitted = new Set(
-    tasks
-      .filter((t) => (t.taskDate || TODAY).slice(0, 10) === TODAY)
-      .map((t) => t.employeeId),
-  ).size;
+  const todayEmployeeIds = new Set(tasks
+    .filter((t) => (t.taskDate || TODAY).slice(0, 10) === TODAY)
+    .map((t) => t.employeeId));
+  const scopedEmployees = department
+    ? employees.filter((employee) => employee.department === department)
+    : employees;
+  const submitted = scopedEmployees.filter((employee) => todayEmployeeIds.has(employee.id)).length;
+  const departmentNames = [...new Set(employees.map((employee) => employee.department))].sort();
   return (
     <div className="page">
+      {department && <button className="back" onClick={() => { setDepartment(null); setQ(""); }}><ChevronLeft />All departments</button>}
       <header className="heading">
         <div>
           <small>EXECUTIVE OVERVIEW</small>
-          <h1>Today’s team progress</h1>
-          <p>{day(TODAY)} · Select an employee to review and comment.</p>
+          <h1>{department || "Today’s team progress"}</h1>
+          <p>{day(TODAY)} · {department ? "Select an employee to review and comment." : "Select a department to view its team’s progress."}</p>
         </div>
       </header>
       <div className="stats">
         <Stat
           icon={UserRound}
           label="Employees"
-          value={employees.length}
+          value={scopedEmployees.length}
           note="Active team"
         />
         <Stat
@@ -534,27 +539,40 @@ function CEO({ employees, tasks, comments, act }) {
         <Stat
           icon={Clock3}
           label="Awaiting update"
-          value={employees.length - submitted}
+          value={scopedEmployees.length - submitted}
           note="Not submitted"
         />
       </div>
       <section className="panel">
         <header>
           <div>
-            <small>TEAM DIRECTORY</small>
-            <h2>Employee progress</h2>
+            <small>{department ? "TEAM DIRECTORY" : "DEPARTMENTS"}</small>
+            <h2>{department ? "Employee progress" : "Progress by department"}</h2>
           </div>
-          <label className="search">
+          {department && <label className="search">
             <Search />
             <input
               placeholder="Search employee"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-          </label>
+          </label>}
         </header>
-        <div className="employees">
-          {employees
+        {!department ? <div className="employees department-grid">
+          {departmentNames.map((name) => {
+            const members = employees.filter((employee) => employee.department === name);
+            const updated = members.filter((employee) => todayEmployeeIds.has(employee.id)).length;
+            return <button key={name} className="employee-card department-card" onClick={() => { setDepartment(name); setQ(""); }}>
+              <div>
+                <h3>{name}</h3>
+                <p>{members.length} employees</p>
+                <span>{updated} submitted · {members.length - updated} awaiting update</span>
+              </div>
+              <Eye />
+            </button>;
+          })}
+        </div> : <div className="employees">
+          {scopedEmployees
             .filter((e) => e.name.toLowerCase().includes(q.toLowerCase()))
             .map((e) => {
               const n = tasks.filter(
@@ -564,9 +582,12 @@ function CEO({ employees, tasks, comments, act }) {
               ).length;
               return (
                 <button
+                  key={e.id}
                   className="employee-card"
                   onClick={() => {
                     setEmp(e);
+                    setDate(TODAY);
+                    setMonth("");
                     setComment(comments[`${e.id}:${TODAY}`] || "");
                     setEditingComment(false);
                   }}
@@ -583,7 +604,7 @@ function CEO({ employees, tasks, comments, act }) {
                 </button>
               );
             })}
-        </div>
+        </div>}
       </section>
     </div>
   );

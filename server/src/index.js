@@ -9,6 +9,7 @@ import authRoutes from "./routes/authRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import managementRoutes from "./routes/managementRoutes.js";
 import ssoRoutes from "./routes/ssoRoutes.js";
+import messageRoutes from "./routes/messageRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -17,9 +18,10 @@ morgan.token("safe-url", (req) => req.originalUrl.replace(/([?&]token=)[^&]+/i, 
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
-app.use(express.json({ limit: "1mb" }));
 app.use(morgan(":method :safe-url :status :response-time ms - :res[content-length]"));
 app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
+app.use('/api/messages', messageRoutes);
+app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "employee-performance-dashboard", timestamp: new Date().toISOString() });

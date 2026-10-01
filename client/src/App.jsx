@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import Messages from "./components/Messages";
 import { progressGroups, progressDateLabel } from "./data/progress";
 import {
   CalendarDays,
@@ -94,7 +95,7 @@ function Login({ login, busy }) {
     </main>
   );
 }
-function Layout({ user, logout, children }) {
+function Layout({ user, logout, children, view, setView, unread }) {
   return (
     <div className="shell">
       <aside>
@@ -107,8 +108,11 @@ function Layout({ user, logout, children }) {
         </div>
         <nav>
           <small>WORKSPACE</small>
-          <button>
+          <button onClick={() => setView('progress')} aria-current={view === 'progress' ? 'page' : undefined}>
             <i /> {user.role === "CEO" ? "Team progress" : "My progress"}
+          </button>
+          <button onClick={() => setView('messages')} aria-current={view === 'messages' ? 'page' : undefined}>
+            <MessageSquare size={16}/> Messages {unread > 0 && <b className="unread-badge">{unread}</b>}
           </button>
         </nav>
         <div className="user">
@@ -574,6 +578,9 @@ function PremiumLoader({ label }) {
 
 export default function App() {
   const ssoStarted = useRef(false);
+  const [view,setView] = useState('progress');
+  const [contacts,setContacts] = useState([]);
+  const [chatError,setChatError] = useState('');
   const [initialLoading, setInitialLoading] = useState(true),
     [user, setUser] = useState(null),
     [token, setToken] = useState(""),
@@ -582,6 +589,19 @@ export default function App() {
     [comments, setComments] = useState({}),
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false);
+  const refreshContacts = useCallback(async () => {
+    if(!user || !token) return;
+    try {
+      const response=await fetch(`${BASE}/messages/contacts`, {headers:{Authorization:`Bearer ${token}`}});
+      if(!response.ok) throw new Error('Messages are unavailable. Please try again shortly.');
+      const data=await response.json();setContacts(data.contacts);setChatError('');
+    }catch(error){setChatError(error.message)}
+  },[user,token]);
+  useEffect(() => {
+    refreshContacts();
+    const interval=setInterval(()=>{if(!document.hidden)refreshContacts()},15000);
+    return ()=>clearInterval(interval);
+  },[refreshContacts]);
   useEffect(() => {
     const timer = window.setTimeout(() => setInitialLoading(false), 1400);
     return () => window.clearTimeout(timer);
@@ -726,12 +746,17 @@ export default function App() {
     <>
       <Layout
         user={user}
+        view={view}
+        setView={setView}
+        unread={contacts.reduce((sum,contact)=>sum+contact.unread,0)}
         logout={() => {
           setUser(null);
           setToken("");
+          setContacts([]);
+          setView('progress');
         }}
       >
-        {user.role === "CEO" ? (
+        {view === 'messages' ? <Messages base={BASE} token={token} user={user} contacts={contacts} onRead={refreshContacts} error={chatError}/> : user.role === "CEO" ? (
           <CEO employees={employees} tasks={tasks} comments={comments} act={act} />
         ) : (
           <Employee user={user} tasks={tasks} comments={comments} act={act} busy={busy} />

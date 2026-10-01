@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { progressGroups, progressDateLabel } from "./data/progress";
 import {
   CalendarDays,
   Check,
@@ -231,11 +232,38 @@ function Modal({ task, close, save }) {
     </div>
   );
 }
+function Progress({ tasks, edit, del, setPriority }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("today");
+  const [date, setDate] = useState(TODAY);
+  const [month, setMonth] = useState(TODAY.slice(0, 7));
+  const groups = progressGroups(tasks, mode, date, month, TODAY);
+  return <section className="panel progress-panel">
+    <button className="soft progress-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <CalendarDays /> Progress <span>{open ? "Hide" : "View tasks & history"}</span>
+    </button>
+    {open && <div className="progress-content">
+      <div className="progress-filters">
+        <div className="progress-presets" aria-label="Progress period">
+          {["today", "week", "month", "calendar"].map(value => <button key={value} aria-pressed={mode === value} className={mode === value ? "active" : ""} onClick={() => setMode(value)}>{value === "calendar" ? "Calendar" : value[0].toUpperCase() + value.slice(1)}</button>)}
+        </div>
+        {mode === "calendar" && <label>Date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>}
+        {mode === "month" && <label>Month<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>}
+        {mode === "week" && <span>This week · Monday–Sunday</span>}
+      </div>
+      {groups.length ? groups.map(([dateKey, dayTasks]) => <section className="progress-day" key={dateKey}>
+        <header><h3>{progressDateLabel(dateKey)}</h3><span>{dayTasks.length} {dayTasks.length === 1 ? "task" : "tasks"}</span></header>
+        <div className="tasks">{dayTasks.map(task => <Task key={task.id} task={task} edit={dateKey === TODAY ? edit : undefined} del={del} setPriority={setPriority} />)}</div>
+      </section>) : <Empty title="No progress for this period" text="Choose another date or period to see saved tasks." />}
+    </div>}
+  </section>;
+}
+
 function Employee({ user, tasks, comments, act, busy }) {
+  tasks = tasks.filter(task => task.employeeId === user.employeeId);
   const today = tasks.filter(
       (t) => (t.taskDate || TODAY).slice(0, 10) === TODAY,
-    ),
-    history = tasks.filter((t) => (t.taskDate || TODAY).slice(0, 10) !== TODAY);
+    );
   const [rows, setRows] = useState([{ description: "" }]),
     [editing, setEditing] = useState(null);
   return (
@@ -329,52 +357,7 @@ function Employee({ user, tasks, comments, act, busy }) {
           </button>
         </footer>
       </section>
-      <section className="panel">
-        <header>
-          <div>
-            <small>SAVED TODAY</small>
-            <h2>Your task list</h2>
-          </div>
-        </header>
-        {today.length ? (
-          <div className="tasks">
-            {today.map((t) => (
-              <Task
-                task={t}
-                edit={setEditing}
-                del={act.del}
-                setPriority={(id, priority) => act.priority([id], priority)}
-              />
-            ))}
-          </div>
-        ) : (
-          <Empty
-            title="Nothing submitted yet"
-            text="Add your first task above."
-          />
-        )}
-      </section>
-      <section className="panel">
-        <header>
-          <div>
-            <small>EARLIER WORK</small>
-            <h2>Progress history</h2>
-          </div>
-          <input type="month" onChange={(e) => act.month(e.target.value)} />
-        </header>
-        {history.length ? (
-          <div className="tasks">
-            {history.map((t) => (
-              <Task task={t} />
-            ))}
-          </div>
-        ) : (
-          <Empty
-            title="No earlier entries"
-            text="Previous days appear here automatically."
-          />
-        )}
-      </section>
+      <Progress tasks={tasks} edit={setEditing} del={act.del} setPriority={(id, priority) => act.priority([id], priority)} />
       {editing && (
         <Modal
           task={editing}
@@ -389,19 +372,9 @@ function CEO({ employees, tasks, comments, act }) {
   const [emp, setEmp] = useState(null),
     [department, setDepartment] = useState(null),
     [date, setDate] = useState(TODAY),
-    [month, setMonth] = useState(""),
     [q, setQ] = useState(""),
     [comment, setComment] = useState(""),
     [editingComment, setEditingComment] = useState(false);
-  const filtered = emp
-    ? tasks.filter(
-        (t) =>
-          t.employeeId === emp.id &&
-          (month
-            ? (t.taskDate || "").slice(0, 7) === month
-            : (t.taskDate || TODAY).slice(0, 10) === date),
-      )
-    : [];
   const savedComment = emp ? comments[`${emp.id}:${date}`] : "";
   if (emp)
     return (
@@ -420,48 +393,22 @@ function CEO({ employees, tasks, comments, act }) {
             </p>
           </div>
         </header>
+        <Progress key={emp.id} tasks={tasks.filter(task => task.employeeId === emp.id)} />
         <section className="filters">
           <label>
-            Specific day
+            CEO comment date
             <input
               type="date"
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
-                setMonth("");
+                setEditingComment(false);
                 setComment(comments[`${emp.id}:${e.target.value}`] || "");
               }}
             />
           </label>
-          <span>or</span>
-          <label>
-            Whole month
-            <input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-            />
-          </label>
         </section>
-        <section className="panel">
-          <header>
-            <h2>{month || day(date)}</h2>
-            <em>{filtered.length} tasks</em>
-          </header>
-          {filtered.length ? (
-            <div className="tasks">
-              {filtered.map((t) => (
-                <Task task={t} />
-              ))}
-            </div>
-          ) : (
-            <Empty
-              title="No progress submitted"
-              text="No tasks for this period."
-            />
-          )}
-        </section>
-        {!month && savedComment && (
+        {savedComment && (
           <section className="saved-comment">
             <MessageSquare />
             <div>
@@ -479,7 +426,7 @@ function CEO({ employees, tasks, comments, act }) {
             </button>
           </section>
         )}
-        {!month && (!savedComment || editingComment) && (
+        {(!savedComment || editingComment) && (
           <section className="panel comment">
             <div>
               <small>DAY-LEVEL FEEDBACK</small>
@@ -587,7 +534,6 @@ function CEO({ employees, tasks, comments, act }) {
                   onClick={() => {
                     setEmp(e);
                     setDate(TODAY);
-                    setMonth("");
                     setComment(comments[`${e.id}:${TODAY}`] || "");
                     setEditingComment(false);
                   }}
@@ -635,8 +581,7 @@ export default function App() {
     [tasks, setTasks] = useState([]),
     [comments, setComments] = useState({}),
     [toast, setToast] = useState(""),
-    [busy, setBusy] = useState(false),
-    [month, setMonth] = useState("");
+    [busy, setBusy] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setInitialLoading(false), 1400);
     return () => window.clearTimeout(timer);
@@ -735,7 +680,6 @@ export default function App() {
     completeSso();
   }, []);
   const act = {
-    month: setMonth,
     add: (v) =>
       mut(
         "/manage/tasks/batch",
@@ -764,13 +708,6 @@ export default function App() {
         "Comment saved",
       ),
   };
-  const visible = useMemo(
-    () =>
-      month
-        ? tasks.filter((t) => (t.taskDate || "").slice(0, 7) === month)
-        : tasks,
-    [tasks, month],
-  );
   if (initialLoading) {
     return <PremiumLoader label="Opening Performance…" />;
   }
@@ -797,7 +734,7 @@ export default function App() {
         {user.role === "CEO" ? (
           <CEO employees={employees} tasks={tasks} comments={comments} act={act} />
         ) : (
-          <Employee user={user} tasks={visible} comments={comments} act={act} busy={busy} />
+          <Employee user={user} tasks={tasks} comments={comments} act={act} busy={busy} />
         )}
         {toast && <div className="toast">{toast}</div>}
       </Layout>

@@ -599,8 +599,10 @@ export default function App() {
   },[user,token]);
   useEffect(() => {
     refreshContacts();
-    const interval=setInterval(()=>{if(!document.hidden)refreshContacts()},15000);
-    return ()=>clearInterval(interval);
+    const interval=setInterval(()=>{if(!document.hidden)refreshContacts()},5000);
+    const onFocus=()=>{if(!document.hidden)refreshContacts()};
+    window.addEventListener('focus',onFocus);document.addEventListener('visibilitychange',onFocus);
+    return ()=>{clearInterval(interval);window.removeEventListener('focus',onFocus);document.removeEventListener('visibilitychange',onFocus)};
   },[refreshContacts]);
   useEffect(() => {
     const timer = window.setTimeout(() => setInitialLoading(false), 1400);

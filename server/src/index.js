@@ -19,8 +19,8 @@ morgan.token("safe-url", (req) => req.originalUrl.replace(/([?&]token=)[^&]+/i, 
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
 app.use(morgan(":method :safe-url :status :response-time ms - :res[content-length]"));
-app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
 app.use('/api/messages', messageRoutes);
+app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {

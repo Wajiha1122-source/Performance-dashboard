@@ -2,7 +2,7 @@ import React, {useEffect,useRef,useState} from 'react';
 import {MessageSquare,Mic,Square,Send,Trash2} from 'lucide-react';
 
 async function request(base,token,path,options={}) {
-  const response=await fetch(`${base}/messages${path}`,{...options,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}});
+  const response=await fetch(`${base}/messages${path}`,{...options,cache:'no-store',signal:AbortSignal.timeout(30000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}});
   const data=await response.json().catch(()=>({}));
   if(!response.ok) throw new Error(data.message||'Could not connect. Please try again.');
   return data;
@@ -22,9 +22,10 @@ function Voice({base,token,peer,id}) {
   return <div>{url?<audio controls src={url}/>:<button className="soft" disabled={loading} onClick={load}>{loading?'Loading…':'Listen to voice note'}</button>}{error&&<p role="alert">{error}</p>}</div>;
 }
 function Conversation({base,token,user,peer,onRead}) {
-  const [messages,setMessages]=useState([]),[text,setText]=useState(''),[error,setError]=useState(''),[sending,setSending]=useState(false),[loading,setLoading]=useState(true),[older,setOlder]=useState(false);
+  const [messages,setMessages]=useState([]),[text,setText]=useState(''),[error,setError]=useState(''),[sending,setSending]=useState(false),[loading,setLoading]=useState(true),[older,setOlder]=useState(false),[status,setStatus]=useState('Connecting…'),[sentNotice,setSentNotice]=useState('');
   const [recording,setRecording]=useState(false),[acquiring,setAcquiring]=useState(false),[seconds,setSeconds]=useState(0),[voice,setVoice]=useState(null);
-  const last=useRef(''),alive=useRef(true),recorder=useRef(null),stream=useRef(null),timer=useRef(null),draftId=useRef(null),preview=useRef(''),requesting=useRef(false),bottom=useRef(null);
+  const last=useRef(''),alive=useRef(true),recorder=useRef(null),stream=useRef(null),timer=useRef(null),draftId=useRef(null),preview=useRef(''),requesting=useRef(false),bottom=useRef(null),refreshNow=useRef(()=>{});
+  const merge=incoming=>setMessages(old=>[...new Map([...old,...incoming].map(m=>[m.id,m])).values()].sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:1));
   const call=(path,options)=>request(base,token,`/${peer.id}${path}`,options);
   const clearVoice=()=>{URL.revokeObjectURL(preview.current);preview.current='';setVoice(null);draftId.current=null};
   function stop(){if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());clearInterval(timer.current);setRecording(false)}
@@ -36,19 +37,21 @@ function Conversation({base,token,user,peer,onRead}) {
       try{
         const data=await call(last.current?`?after=${last.current}`:'');
         if(!alive.current)return;
-        const unread=data.messages.filter(m=>m.recipientId===user.id&&!m.readAt).map(m=>m.id);
-        if(unread.length){await call('/read',{method:'POST',body:JSON.stringify({ids:unread})});if(!alive.current)return;onRead()}
         if(!last.current)setOlder(data.hasMore);
         if(data.messages.length){
           last.current=data.messages.at(-1).id;
-          setMessages(old=>[...new Map([...old,...data.messages].map(m=>[m.id,m])).values()]);
+          merge(data.messages);
           setTimeout(()=>bottom.current?.scrollIntoView({block:'nearest'}),50);
         }
-        setError('');
-      }catch(e){if(alive.current)setError(e.message)}finally{requesting.current=false;if(alive.current)setLoading(false)}
+        setStatus('Connected · Updates every 2 seconds');
+        const unread=data.messages.filter(m=>m.recipientId===user.id&&!m.readAt).map(m=>m.id);
+        if(unread.length){try{await call('/read',{method:'POST',body:JSON.stringify({ids:unread})});onRead()}catch{/* Displayed messages remain visible even if read receipts fail. */}}
+      }catch(e){if(alive.current)setStatus('Connection interrupted · Retrying automatically')}finally{requesting.current=false;if(alive.current)setLoading(false)}
     }
-    refresh();const interval=setInterval(refresh,5000);
-    return ()=>{alive.current=false;clearInterval(interval);clearInterval(timer.current);if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());URL.revokeObjectURL(preview.current)};
+    refreshNow.current=refresh;
+    refresh();const interval=setInterval(refresh,2000);
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return ()=>{alive.current=false;clearInterval(interval);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);clearInterval(timer.current);if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());URL.revokeObjectURL(preview.current)};
   },[peer.id,token]);
   async function loadOlder(){
     try{const data=await call(`?before=${messages[0].id}`);if(!alive.current)return;setMessages(old=>[...new Map([...data.messages,...old].map(m=>[m.id,m])).values()]);setOlder(data.hasMore);const ids=data.messages.filter(m=>m.recipientId===user.id&&!m.readAt).map(m=>m.id);if(ids.length){await call('/read',{method:'POST',body:JSON.stringify({ids})});onRead()}}catch(e){if(alive.current)setError(e.message)}
@@ -82,19 +85,22 @@ function Conversation({base,token,user,peer,onRead}) {
   }
   async function send(event){
     event.preventDefault();if(sending||recording||(!text.trim()&&!voice))return;
-    setSending(true);setError('');
+    setSending(true);setError('');setSentNotice('');
     try{
       draftId.current ||= crypto.randomUUID();
       const payload={clientId:draftId.current,body:text.trim()};
       if(voice){payload.audio=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(voice.blob)});payload.audioType=voice.type;payload.duration=voice.duration}
-      await call('',{method:'POST',body:JSON.stringify(payload)});
+      const result=await call('',{method:'POST',body:JSON.stringify(payload)});
       if(!alive.current)return;
+      if(result.message)merge([result.message]);
+      setSentNotice(`Sent to ${peer.name}`);
       setText('');clearVoice();
-      // The next poll collects this message and any incoming messages in order.
+      refreshNow.current();onRead();
+      setTimeout(()=>bottom.current?.scrollIntoView({block:'nearest'}),50);
     }catch(e){if(alive.current)setError(e.message)}finally{if(alive.current)setSending(false)}
   }
   return <section className="chat-conversation">
-    <header><strong>{peer.name}</strong><span>{peer.department||'CEO'} · Private conversation</span></header>
+    <header><strong>Chat with {peer.name}</strong><span>{peer.department||'CEO'} · Private conversation</span><span role="status">{status}</span><button type="button" className="link" onClick={()=>refreshNow.current()}>Refresh conversation</button></header>
     <div className="chat-history" aria-label="Conversation">
       {older&&<button className="soft" onClick={loadOlder}>Load earlier messages</button>}
       {loading?<p>Loading conversation…</p>:!messages.length?<p className="chat-empty">Start your conversation with {peer.name}.</p>:null}
@@ -105,10 +111,11 @@ function Conversation({base,token,user,peer,onRead}) {
     </div>
     <form className="chat-compose" onSubmit={send}>
       {error&&<p className="chat-error" role="alert">{error}</p>}
-      {voice&&<div className="voice-preview"><audio controls src={voice.url}/><button type="button" disabled={sending} onClick={clearVoice} aria-label="Discard voice note"><Trash2 size={18}/></button></div>}
+      {sentNotice&&<p className="chat-sent" role="status">{sentNotice}</p>}
+      {voice&&<><p>Voice note ready. Press Send voice note to deliver it to {peer.name}.</p><div className="voice-preview"><audio controls src={voice.url}/><button type="button" disabled={sending} onClick={clearVoice} aria-label="Discard voice note"><Trash2 size={18}/></button></div></>}
       {recording&&<div className="voice-recording">Recording · {seconds}s / 120s <button type="button" onClick={stop}><Square size={15}/>Stop recording</button></div>}
       <textarea aria-label="Message" placeholder="Write a message…" maxLength={4000} value={text} disabled={sending} onChange={e=>{setText(e.target.value);draftId.current=null}}/>
-      <div className="chat-compose-actions"><button className="soft" type="button" onClick={record} disabled={sending||recording||acquiring||!!voice}><Mic size={17}/>{acquiring?'Waiting for microphone…':'Record voice note'}</button><button className="primary" disabled={sending||recording||acquiring||(!text.trim()&&!voice)}><Send size={17}/>{sending?'Sending…':'Send'}</button></div>
+      <div className="chat-compose-actions"><button className="soft" type="button" onClick={record} disabled={sending||recording||acquiring||!!voice}><Mic size={17}/>{acquiring?'Waiting for microphone…':'Record voice note'}</button><button className="primary" disabled={sending||recording||acquiring||(!text.trim()&&!voice)}><Send size={17}/>{sending?`Sending to ${peer.name}…`:voice?'Send voice note':`Send to ${peer.name}`}</button></div>
     </form>
   </section>;
 }

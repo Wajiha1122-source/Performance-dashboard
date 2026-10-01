@@ -8,7 +8,7 @@ const {signUser}=await import('../src/middleware/auth.js');
 const ids=[];
 const server=app.listen(0,'127.0.0.1');
 await new Promise(resolve=>server.once('listening',resolve));
-const url=`http://127.0.0.1:${server.address().port}/api/messages`;
+const url=process.env.MESSAGE_TEST_BASE || `http://127.0.0.1:${server.address().port}/api/messages`;
 try{
   const dept=(await pool.query('SELECT id FROM departments LIMIT 1')).rows[0].id;
   for(const role of ['CEO','EMPLOYEE','EMPLOYEE']){
@@ -27,6 +27,12 @@ try{
   const messages=await call(0,`/${ids[1]}`);assert.equal(messages.data.messages.length,1);
   assert.equal((await call(2,`/${ids[1]}`)).status,403);
   assert.equal((await call(2,`/${ids[0]}`)).data.messages.length,0);
+  const reply=await call(0,`/${ids[1]}`,'POST',{clientId:randomUUID(),body:'CEO reply'});
+  assert.equal(reply.status,201);
+  const received=await call(1,`/${ids[0]}?after=${sent.data.message.id}`);
+  assert.equal(received.data.messages.length,1);
+  assert.equal(received.data.messages[0].body,'CEO reply');
+  assert.equal(received.data.messages[0].recipientId,ids[1]);
   assert.equal((await call(1,`/${ids[2]}`,'POST',{clientId:randomUUID(),body:'Forbidden'})).status,403);
   let contacts=await call(0,'/contacts');assert.equal(contacts.data.contacts.find(c=>c.id===ids[1]).unread,1);
   assert.equal((await call(0,`/${ids[1]}/read`,'POST',{ids:[sent.data.message.id]})).status,200);
@@ -39,7 +45,7 @@ try{
   assert.equal((await fetch(`${url}/${ids[0]}/audio/${voice.data.message.id}`,{headers:{Authorization:`Bearer ${tokens[2]}`}})).status,404);
   await pool.query('UPDATE users SET is_active=false WHERE id=$1',[ids[1]]);
   assert.equal((await call(1,'/contacts')).status,403);
-  console.log('PASS: private text, duplicate protection, unread counts, read receipts, voice byte storage/access, invalid payloads, inactive-account rejection.');
+  console.log('PASS: two-way text delivery, new-message cursors, duplicate protection, unread counts, read receipts, voice byte storage/access, invalid payloads, inactive-account rejection.');
 }finally{
   await pool.query('DELETE FROM employees WHERE user_id=ANY($1::uuid[])',[ids]);
   await pool.query('DELETE FROM users WHERE id=ANY($1::uuid[])',[ids]);

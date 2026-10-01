@@ -10,7 +10,11 @@ const id = z.string().regex(/^\d+$/);
 const metadata = `id::text, sender_id AS "senderId", recipient_id AS "recipientId", body,
  audio IS NOT NULL AS "hasAudio", duration_seconds AS duration, created_at AS "createdAt", read_at AS "readAt"`;
 const wrap = fn => (req,res,next) => Promise.resolve(fn(req,res,next)).catch(next);
+router.use(rateLimit({windowMs:60000,limit:2000}));
 router.use(authenticate);
+router.use(rateLimit({windowMs:60000,limit:180,keyGenerator:req=>req.user.sub,
+  message:{message:'Too many chat requests. Please wait a moment.'}}));
+router.use((req,res,next)=>{res.set('Cache-Control','no-store');next()});
 router.use(wrap(async(req,res,next) => {
   const {rows} = await query(`SELECT u.id,r.name AS role FROM users u JOIN roles r ON r.id=u.role_id
     WHERE u.id=$1 AND u.is_active=true AND (r.name='CEO' OR (r.name='EMPLOYEE' AND EXISTS
@@ -54,7 +58,7 @@ router.post('/:peer/read',express.json(),wrap(async(req,res) => {
   await query('UPDATE private_messages SET read_at=NOW() WHERE sender_id=$1 AND recipient_id=$2 AND id=ANY($3::bigint[]) AND read_at IS NULL',[req.params.peer,req.chatUser.id,parsed.data.ids]);
   res.json({ok:true});
 }));
-router.post('/:peer',rateLimit({windowMs:60000,limit:20}),express.json({limit:'3mb'}),wrap(async(req,res) => {
+router.post('/:peer',rateLimit({windowMs:60000,limit:20,keyGenerator:req=>req.user.sub}),express.json({limit:'3mb'}),wrap(async(req,res) => {
   const parsed=z.object({clientId:uuid,body:z.string().trim().max(4000).default(''),audio:z.string().max(2796204).optional(),audioType:z.enum(['audio/webm','audio/ogg','audio/mp4']).optional(),duration:z.number().int().min(1).max(120).optional()}).safeParse(req.body);
   if(!parsed.success) return res.status(400).json({message:'Check your message or voice-note size.'});
   const data=parsed.data;

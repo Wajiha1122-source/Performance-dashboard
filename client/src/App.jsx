@@ -95,7 +95,7 @@ function Login({ login, busy }) {
     </main>
   );
 }
-function Layout({ user, logout, children, view, setView, unread }) {
+function Layout({ user, logout, children, view, setView, unread, canViewDepartments }) {
   return (
     <div className="shell">
       <aside>
@@ -114,6 +114,7 @@ function Layout({ user, logout, children, view, setView, unread }) {
           <button onClick={() => setView('messages')} aria-current={view === 'messages' ? 'page' : undefined}>
             <MessageSquare size={16}/> Messages {unread > 0 && <b className="unread-badge">{unread}</b>}
           </button>
+          {canViewDepartments && <button onClick={() => setView('departments')} aria-current={view === 'departments' ? 'page' : undefined}><Eye size={16}/> Department performance</button>}
         </nav>
         <div className="user">
           <b>{ini(user.name)}</b>
@@ -372,7 +373,7 @@ function Employee({ user, tasks, comments, act, busy }) {
     </div>
   );
 }
-function CEO({ employees, tasks, comments, act }) {
+function CEO({ employees, tasks, comments, act, readOnly = false }) {
   const [emp, setEmp] = useState(null),
     [department, setDepartment] = useState(null),
     [date, setDate] = useState(TODAY),
@@ -398,7 +399,7 @@ function CEO({ employees, tasks, comments, act }) {
           </div>
         </header>
         <Progress key={emp.id} tasks={tasks.filter(task => task.employeeId === emp.id)} />
-        <section className="filters">
+        {!readOnly && <section className="filters">
           <label>
             CEO comment date
             <input
@@ -411,8 +412,8 @@ function CEO({ employees, tasks, comments, act }) {
               }}
             />
           </label>
-        </section>
-        {savedComment && (
+        </section>}
+        {!readOnly && savedComment && (
           <section className="saved-comment">
             <MessageSquare />
             <div>
@@ -430,7 +431,7 @@ function CEO({ employees, tasks, comments, act }) {
             </button>
           </section>
         )}
-        {(!savedComment || editingComment) && (
+        {!readOnly && (!savedComment || editingComment) && (
           <section className="panel comment">
             <div>
               <small>DAY-LEVEL FEEDBACK</small>
@@ -469,9 +470,9 @@ function CEO({ employees, tasks, comments, act }) {
       {department && <button className="back" onClick={() => { setDepartment(null); setQ(""); }}><ChevronLeft />All departments</button>}
       <header className="heading">
         <div>
-          <small>EXECUTIVE OVERVIEW</small>
+          <small>{readOnly ? 'DEPARTMENT PERFORMANCE · VIEW ONLY' : 'EXECUTIVE OVERVIEW'}</small>
           <h1>{department || "Today’s team progress"}</h1>
-          <p>{day(TODAY)} · {department ? "Select an employee to review and comment." : "Select a department to view its team’s progress."}</p>
+          <p>{day(TODAY)} · {department ? (readOnly ? "Select an employee to view their progress." : "Select an employee to review and comment.") : "Select a department to view its team’s progress."}</p>
         </div>
       </header>
       <div className="stats">
@@ -580,6 +581,7 @@ export default function App() {
   const ssoStarted = useRef(false);
   const [view,setView] = useState('progress');
   const [contacts,setContacts] = useState([]);
+  const [viewDepartments,setViewDepartments] = useState([]);
   const [chatError,setChatError] = useState('');
   const [initialLoading, setInitialLoading] = useState(true),
     [user, setUser] = useState(null),
@@ -627,6 +629,7 @@ export default function App() {
       return d;
     },
     apply = (d) => {
+      setViewDepartments(d.viewDepartments || []);
       setEmployees(d.employees || []);
       setTasks(d.tasks || []);
       setComments(d.comments || {});
@@ -751,14 +754,16 @@ export default function App() {
         view={view}
         setView={setView}
         unread={contacts.reduce((sum,contact)=>sum+contact.unread,0)}
+        canViewDepartments={user.role !== 'CEO' && viewDepartments.length > 0}
         logout={() => {
           setUser(null);
           setToken("");
           setContacts([]);
+          setViewDepartments([]);
           setView('progress');
         }}
       >
-        {view === 'messages' ? <Messages base={BASE} token={token} user={user} contacts={contacts} onRead={refreshContacts} error={chatError}/> : user.role === "CEO" ? (
+        {view === 'messages' ? <Messages base={BASE} token={token} user={user} contacts={contacts} onRead={refreshContacts} error={chatError}/> : view === 'departments' && viewDepartments.length > 0 ? <CEO key="viewer" employees={employees.filter(e=>viewDepartments.includes(e.department))} tasks={tasks} comments={{}} act={act} readOnly/> : user.role === "CEO" ? (
           <CEO employees={employees} tasks={tasks} comments={comments} act={act} />
         ) : (
           <Employee user={user} tasks={tasks} comments={comments} act={act} busy={busy} />

@@ -5,6 +5,8 @@ import { pool, query } from "../config/db.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 
+import { scopeDashboard } from '../services/dashboardAccess.js';
+
 const router = Router();
 
 const employeeSchema = z.object({
@@ -50,7 +52,7 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function loadDashboardData() {
+async function loadDashboardData(session) {
   const departments = await query(
     `SELECT d.id, d.name, d.code, COALESCE(u.name, 'Department Head') AS head
      FROM departments d
@@ -91,18 +93,18 @@ async function loadDashboardData() {
   );
   const remarks = await query(`SELECT employee_id AS "employeeId", TO_CHAR(remark_date, 'YYYY-MM-DD') AS date, remark FROM ceo_remarks ORDER BY created_at DESC`);
 
-  return {
+  return scopeDashboard({
     departments: departments.rows,
     employees: employees.rows,
     tasks: tasks.rows.map((task) => ({ ...task, status: reverseTaskStatusMap[task.status] })),
     attendance: Object.fromEntries(attendance.rows.map((row) => [row.employeeId, row.status])),
     comments: Object.fromEntries(remarks.rows.map((row) => [`${row.employeeId}:${row.date}`, row.remark]))
-  };
+  }, session);
 }
 
-router.get("/bootstrap", authenticate, async (_req, res, next) => {
+router.get("/bootstrap", authenticate, async (req, res, next) => {
   try {
-    return res.json(await loadDashboardData());
+    return res.json(await loadDashboardData(req.user));
   } catch (error) {
     return next(error);
   }
@@ -110,15 +112,15 @@ router.get("/bootstrap", authenticate, async (_req, res, next) => {
 
 router.post("/tasks/batch", authenticate, authorize("EMPLOYEE"), validate(batchTaskSchema), async (req, res, next) => {
   const client = await pool.connect();
-  try { await client.query("BEGIN"); const employee = await client.query("SELECT id, department_id FROM employees WHERE user_id=$1 AND is_active=true", [req.user.sub]); if (!employee.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "Employee profile not found." }); } for (const [index, task] of req.body.tasks.entries()) await client.query("INSERT INTO tasks (employee_id,department_id,title,description,task_date,added_by) VALUES ($1,$2,$3,$4,$5,$6)", [employee.rows[0].id,employee.rows[0].department_id,task.title||`Task ${index+1}`,task.description,req.body.date||today(),req.user.sub]); await client.query("COMMIT"); return res.status(201).json({ data: await loadDashboardData() }); }
+  try { await client.query("BEGIN"); const employee = await client.query("SELECT id, department_id FROM employees WHERE user_id=$1 AND is_active=true", [req.user.sub]); if (!employee.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "Employee profile not found." }); } for (const [index, task] of req.body.tasks.entries()) await client.query("INSERT INTO tasks (employee_id,department_id,title,description,task_date,added_by) VALUES ($1,$2,$3,$4,$5,$6)", [employee.rows[0].id,employee.rows[0].department_id,task.title||`Task ${index+1}`,task.description,req.body.date||today(),req.user.sub]); await client.query("COMMIT"); return res.status(201).json({ data: await loadDashboardData(req.user) }); }
   catch (error) { await client.query("ROLLBACK"); return next(error); } finally { client.release(); }
 });
 
 router.patch("/tasks/priority", authenticate, authorize("EMPLOYEE"), async (req, res, next) => {
-  try { const ids=Array.isArray(req.body.taskIds)?req.body.taskIds:[]; if(!ids.length||!["normal","medium","high"].includes(req.body.priority)) return res.status(400).json({message:"Select tasks and a valid priority."}); await query("UPDATE tasks t SET priority=$1,updated_at=NOW() FROM employees e WHERE t.employee_id=e.id AND e.user_id=$2 AND t.id=ANY($3::uuid[])",[req.body.priority,req.user.sub,ids]); return res.json({data:await loadDashboardData()}); } catch(error){return next(error);}
+  try { const ids=Array.isArray(req.body.taskIds)?req.body.taskIds:[]; if(!ids.length||!["normal","medium","high"].includes(req.body.priority)) return res.status(400).json({message:"Select tasks and a valid priority."}); await query("UPDATE tasks t SET priority=$1,updated_at=NOW() FROM employees e WHERE t.employee_id=e.id AND e.user_id=$2 AND t.id=ANY($3::uuid[])",[req.body.priority,req.user.sub,ids]); return res.json({data:await loadDashboardData(req.user)}); } catch(error){return next(error);}
 });
 
-router.post("/comments", authenticate, authorize("CEO"), async (req,res,next)=>{try{if(!req.body.employeeId||!req.body.date||!String(req.body.remark||"").trim())return res.status(400).json({message:"Employee, date, and comment are required."});await query("INSERT INTO ceo_remarks (employee_id,ceo_user_id,remark,remark_date) VALUES ($1,$2,$3,$4) ON CONFLICT (employee_id,remark_date) DO UPDATE SET remark=EXCLUDED.remark,ceo_user_id=EXCLUDED.ceo_user_id,created_at=NOW()",[req.body.employeeId,req.user.sub,req.body.remark.trim(),req.body.date]);return res.json({data:await loadDashboardData()});}catch(error){return next(error);}});
+router.post("/comments", authenticate, authorize("CEO"), async (req,res,next)=>{try{if(!req.body.employeeId||!req.body.date||!String(req.body.remark||"").trim())return res.status(400).json({message:"Employee, date, and comment are required."});await query("INSERT INTO ceo_remarks (employee_id,ceo_user_id,remark,remark_date) VALUES ($1,$2,$3,$4) ON CONFLICT (employee_id,remark_date) DO UPDATE SET remark=EXCLUDED.remark,ceo_user_id=EXCLUDED.ceo_user_id,created_at=NOW()",[req.body.employeeId,req.user.sub,req.body.remark.trim(),req.body.date]);return res.json({data:await loadDashboardData(req.user)});}catch(error){return next(error);}});
 
 router.post("/employees", authenticate, authorize("DEPARTMENT_HEAD"), validate(employeeSchema), async (req, res, next) => {
   const client = await pool.connect();
@@ -163,7 +165,7 @@ router.post("/employees", authenticate, authorize("DEPARTMENT_HEAD"), validate(e
     );
 
     await client.query("COMMIT");
-    return res.status(201).json({ employeeId: employee.rows[0].id, user: user.rows[0], data: await loadDashboardData() });
+    return res.status(201).json({ employeeId: employee.rows[0].id, user: user.rows[0], data: await loadDashboardData(req.user) });
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
@@ -185,7 +187,7 @@ router.post("/attendance", authenticate, authorize("DEPARTMENT_HEAD"), validate(
        DO UPDATE SET status = EXCLUDED.status, added_by = EXCLUDED.added_by`,
       [req.body.employeeId, attendanceDate, req.body.status, req.user.sub]
     );
-    return res.json({ data: await loadDashboardData() });
+    return res.json({ data: await loadDashboardData(req.user) });
   } catch (error) {
     return next(error);
   }
@@ -209,7 +211,7 @@ router.post("/tasks", authenticate, authorize("DEPARTMENT_HEAD"), validate(taskS
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [req.body.employeeId, employee.rows[0].department_id, req.body.title, req.body.description, taskStatusMap[req.body.status], req.body.reason, attendanceDate, req.user.sub]
     );
-    return res.status(201).json({ data: await loadDashboardData() });
+    return res.status(201).json({ data: await loadDashboardData(req.user) });
   } catch (error) {
     return next(error);
   }
@@ -236,18 +238,18 @@ router.patch("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req, res,
     values.push(req.params.id);
     values.push(req.user.sub);
     await query(`UPDATE tasks t SET ${fields.join(", ")}, updated_at = NOW() FROM employees e WHERE t.employee_id=e.id AND t.id = $${values.length - 1} AND e.user_id = $${values.length}`, values);
-    return res.json({ data: await loadDashboardData() });
+    return res.json({ data: await loadDashboardData(req.user) });
   } catch (error) {
     return next(error);
   }
 });
 
-router.delete("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req,res,next)=>{try{await query("DELETE FROM tasks t USING employees e WHERE t.employee_id=e.id AND e.user_id=$1 AND t.id=$2",[req.user.sub,req.params.id]);return res.json({data:await loadDashboardData()});}catch(error){return next(error);}});
+router.delete("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req,res,next)=>{try{await query("DELETE FROM tasks t USING employees e WHERE t.employee_id=e.id AND e.user_id=$1 AND t.id=$2",[req.user.sub,req.params.id]);return res.json({data:await loadDashboardData(req.user)});}catch(error){return next(error);}});
 
 router.delete("/employees/:id", authenticate, authorize("DEPARTMENT_HEAD"), async (req, res, next) => {
   try {
     await query("UPDATE employees SET is_active = false WHERE id = $1", [req.params.id]);
-    return res.json({ data: await loadDashboardData() });
+    return res.json({ data: await loadDashboardData(req.user) });
   } catch (error) {
     return next(error);
   }

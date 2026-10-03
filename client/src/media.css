@@ -3,3 +3,11 @@
 .chat-media > div { display: flex; gap: 6px; flex-wrap: wrap; }
 .media-draft { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; background: #f4eef6; border-radius: 8px; }
 .media-draft span { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.chat-compose-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.chat-compose-row textarea { flex:1; width:0; min-width:0; min-height:42px; height:42px; max-height:120px; resize:vertical; padding:10px 12px; border-radius:22px; }
+.chat-compose-row .chat-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 40px; width:40px; height:40px; padding:0; border-radius:50%; border:0; color:#6b207d; background:#f4eef6; transition:background .15s, box-shadow .15s; }
+.chat-compose-row .chat-icon.primary { background:#6b207d; color:white; }
+.chat-compose-row .chat-icon:hover:not(:disabled) { box-shadow:0 2px 8px #6b207d24; background:#e7d7ec; }
+.chat-compose-row .chat-icon.primary:hover:not(:disabled) { background:#521460; }
+.chat-compose-row .chat-icon:focus-visible { outline:2px solid #6b207d; outline-offset:3px; }
+@media(max-width:480px) { .chat-compose-row { gap:4px; } .chat-compose-row .chat-icon { flex-basis:34px; width:34px; height:34px; } }

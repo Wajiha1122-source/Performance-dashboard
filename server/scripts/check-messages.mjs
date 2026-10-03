@@ -43,6 +43,22 @@ try{
   const voice=await call(1,`/${ids[0]}`,'POST',{clientId:randomUUID(),audio:bytes.toString('base64'),audioType:'audio/webm',duration:1});assert.equal(voice.status,201);
   const audio=await fetch(`${url}/${ids[1]}/audio/${voice.data.message.id}`,{headers:{Authorization:`Bearer ${tokens[0]}`}});assert.equal(audio.status,200);assert.deepEqual(Buffer.from(await audio.arrayBuffer()),bytes);
   assert.equal((await fetch(`${url}/${ids[0]}/audio/${voice.data.message.id}`,{headers:{Authorization:`Bearer ${tokens[2]}`}})).status,404);
+  const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+  for(const [sender,recipient] of [[0,1],[1,0]]){
+    const clientId=randomUUID();
+    const options={method:'POST',headers:{Authorization:`Bearer ${tokens[sender]}`,'Content-Type':'application/octet-stream','X-Client-Id':clientId,'X-File-Name':encodeURIComponent('Gallery photo.png')},body:image};
+    const upload=await fetch(`${url}/${ids[recipient]}/media`,options);assert.equal(upload.status,201);
+    const message=(await upload.json()).message;assert.equal(message.hasMedia,true);assert.equal(message.mediaType,'image/png');
+    const retry=await fetch(`${url}/${ids[recipient]}/media`,options);assert.equal((await retry.json()).message.id,message.id);
+    const history=await call(recipient,`/${ids[sender]}`);assert.ok(history.data.messages.some(m=>m.id===message.id&&m.hasMedia));
+    for(const [actor,peer] of [[sender,recipient],[recipient,sender]]){
+      const download=await fetch(`${url}/${ids[peer]}/media/${message.id}`,{headers:{Authorization:`Bearer ${tokens[actor]}`}});
+      assert.equal(download.status,200);assert.equal(download.headers.get('content-disposition'),'attachment');assert.deepEqual(Buffer.from(await download.arrayBuffer()),image);
+    }
+    assert.equal((await fetch(`${url}/${ids[0]}/media/${message.id}`,{headers:{Authorization:`Bearer ${tokens[2]}`}})).status,404);
+    assert.equal((await fetch(`${url}/${ids[recipient]}/media`,{...options,headers:{...options.headers,'X-Client-Id':randomUUID()},body:Buffer.from('<svg>not supported</svg>')})).status,400);
+  }
+  console.log('PASS: two-way gallery uploads, history visibility, sender and recipient downloads, duplicate protection, unrelated-user denial and invalid-media rejection.');
   await pool.query('UPDATE users SET is_active=false WHERE id=$1',[ids[1]]);
   assert.equal((await call(1,'/contacts')).status,403);
   console.log('PASS: two-way text delivery, new-message cursors, duplicate protection, unread counts, read receipts, voice byte storage/access, invalid payloads, inactive-account rejection.');

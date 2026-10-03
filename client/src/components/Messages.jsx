@@ -1,5 +1,6 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {MessageSquare,Mic,Square,Send,Trash2} from 'lucide-react';
+import '../media.css';
+import {MessageSquare,Mic,Square,Send,Trash2,ImagePlus,Download} from 'lucide-react';
 
 async function request(base,token,path,options={}) {
   const response=await fetch(`${base}/messages${path}`,{...options,cache:'no-store',signal:AbortSignal.timeout(30000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}});
@@ -21,7 +22,33 @@ function Voice({base,token,peer,id}) {
   }
   return <div>{url?<audio controls src={url}/>:<button className="soft" disabled={loading} onClick={load}>{loading?'Loading…':'Listen to voice note'}</button>}{error&&<p role="alert">{error}</p>}</div>;
 }
+function Media({base,token,peer,message}) {
+  const [url,setUrl]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+  const source=useRef(''),alive=useRef(true);
+  useEffect(()=>{alive.current=true;return ()=>{alive.current=false;URL.revokeObjectURL(source.current);source.current=''}},[]);
+  async function load(download=false){
+    setLoading(true);setError('');
+    try{
+      let current=source.current;
+      if(!current){
+        const response=await fetch(`${base}/messages/${peer}/media/${message.id}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(60000)});
+        if(!response.ok)throw Error('Could not load media. Please try again.');
+        const blob=await response.blob();if(!alive.current)return;
+        current=URL.createObjectURL(blob);source.current=current;setUrl(current);
+      }
+      if(download){const link=document.createElement('a');link.href=current;link.download=message.mediaName||'attachment';document.body.appendChild(link);link.click();link.remove()}
+    }catch(e){if(alive.current)setError(e.message)}finally{if(alive.current)setLoading(false)}
+  }
+  return <div className="chat-media">
+    <strong>{message.mediaName}</strong>
+    {url&&(message.mediaType.startsWith('image/')?<img src={url} alt={message.mediaName}/>:<video controls preload="metadata" src={url}/>)}
+    <div>{!url&&<button type="button" className="soft" disabled={loading} onClick={()=>load()}>Preview</button>} <button type="button" className="soft" disabled={loading} onClick={()=>load(true)}><Download size={16}/>{loading?'Loading…':'Download'}</button></div>
+    {error&&<p role="alert">{error}</p>}
+  </div>;
+}
 function Conversation({base,token,user,peer,onRead}) {
+  const [media,setMedia]=useState(null);
+  const gallery=useRef(null),mediaId=useRef(null);
   const [messages,setMessages]=useState([]),[text,setText]=useState(''),[error,setError]=useState(''),[sending,setSending]=useState(false),[loading,setLoading]=useState(true),[older,setOlder]=useState(false),[status,setStatus]=useState('Connecting…'),[sentNotice,setSentNotice]=useState('');
   const [recording,setRecording]=useState(false),[acquiring,setAcquiring]=useState(false),[seconds,setSeconds]=useState(0),[voice,setVoice]=useState(null);
   const last=useRef(''),alive=useRef(true),recorder=useRef(null),stream=useRef(null),timer=useRef(null),draftId=useRef(null),preview=useRef(''),requesting=useRef(false),bottom=useRef(null),refreshNow=useRef(()=>{});
@@ -83,6 +110,18 @@ function Conversation({base,token,user,peer,onRead}) {
       timer.current=setInterval(()=>{const elapsed=Math.floor((Date.now()-started)/1000);setSeconds(elapsed);if(elapsed>=120)stop()},250);
     }catch(e){stream.current?.getTracks().forEach(t=>t.stop());if(alive.current)setError(e.name==='NotAllowedError'?'Allow microphone access in your browser to record a voice note.':e.message)}finally{if(alive.current)setAcquiring(false)}
   }
+  async function sendMedia(){
+    if(!media||sending)return;
+    setSending(true);setError('');setSentNotice('');
+    try{
+      mediaId.current ||= crypto.randomUUID();
+      const response=await fetch(`${base}/messages/${peer.id}/media`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(media.name),'X-Client-Id':mediaId.current},body:media,signal:AbortSignal.timeout(60000)});
+      const result=await response.json();if(!response.ok)throw Error(result.message||'Media could not be sent. Please try again.');
+      if(!alive.current)return;
+      merge([result.message]);setMedia(null);mediaId.current=null;setSentNotice(`Media sent to ${peer.name}`);refreshNow.current();onRead();
+      setTimeout(()=>bottom.current?.scrollIntoView({block:'nearest'}),50);
+    }catch(e){if(alive.current)setError(e.message)}finally{if(alive.current)setSending(false)}
+  }
   async function send(event){
     event.preventDefault();if(sending||recording||(!text.trim()&&!voice))return;
     setSending(true);setError('');setSentNotice('');
@@ -105,13 +144,18 @@ function Conversation({base,token,user,peer,onRead}) {
       {older&&<button className="soft" onClick={loadOlder}>Load earlier messages</button>}
       {loading?<p>Loading conversation…</p>:!messages.length?<p className="chat-empty">Start your conversation with {peer.name}.</p>:null}
       {messages.map(m=><article key={m.id} className={`chat-message ${m.senderId===user.id?'mine':''}`}>
-        {m.body&&<p>{m.body}</p>}{m.hasAudio&&<Voice base={base} token={token} peer={peer.id} id={m.id}/>}
+        {m.body&&!m.hasMedia&&<p>{m.body}</p>}{m.hasAudio&&<Voice base={base} token={token} peer={peer.id} id={m.id}/>}
+        {m.hasMedia&&<Media base={base} token={token} peer={peer.id} message={m}/>}
         <time>{new Date(m.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}{m.hasAudio?` · ${m.duration}s voice note`:''}</time>
       </article>)}<div ref={bottom}/>
     </div>
     <form className="chat-compose" onSubmit={send}>
       {error&&<p className="chat-error" role="alert">{error}</p>}
       {sentNotice&&<p className="chat-sent" role="status">{sentNotice}</p>}
+      <input ref={gallery} type="file" hidden accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;if(!file.size||file.size>10485760){setError('Choose a photo or video up to 10 MB.');return}setError('');setMedia(file);mediaId.current=null}}/>
+      <button type="button" className="soft" disabled={sending||recording||acquiring} onClick={()=>gallery.current?.click()}><ImagePlus size={17}/>Add photo / video</button>
+      <small>JPG, PNG, GIF, WebP, MP4 or WebM · Up to 10 MB per file</small>
+      {media&&<div className="media-draft"><span>{media.name} · {(media.size/1048576).toFixed(1)} MB</span><button type="button" className="primary" disabled={sending} onClick={sendMedia}>{sending?'Sending…':'Send media'}</button><button type="button" disabled={sending} aria-label="Remove attachment" onClick={()=>{setMedia(null);mediaId.current=null}}><Trash2 size={17}/></button></div>}
       {voice&&<><p>Voice note ready. Press Send voice note to deliver it to {peer.name}.</p><div className="voice-preview"><audio controls src={voice.url}/><button type="button" disabled={sending} onClick={clearVoice} aria-label="Discard voice note"><Trash2 size={18}/></button></div></>}
       {recording&&<div className="voice-recording">Recording · {seconds}s / 120s <button type="button" onClick={stop}><Square size={15}/>Stop recording</button></div>}
       <textarea aria-label="Message" placeholder="Write a message…" maxLength={4000} value={text} disabled={sending} onChange={e=>{setText(e.target.value);draftId.current=null}}/>
@@ -122,7 +166,7 @@ function Conversation({base,token,user,peer,onRead}) {
 export default function Messages({base,token,user,contacts,onRead,error}) {
   const [selected,setSelected]=useState('');
   const peer=contacts.find(c=>c.id===selected)||(user.role==='EMPLOYEE'?contacts[0]:null);
-  return <div className="page"><header className="heading"><div><small>PRIVATE MESSAGES</small><h1>{user.role==='CEO'?'Team conversations':'Chat with the CEO'}</h1><p>Text and voice notes in one place. New messages update automatically.</p></div></header>
+  return <div className="page"><header className="heading"><div><small>PRIVATE MESSAGES</small><h1>{user.role==='CEO'?'Team conversations':'Chat with the CEO'}</h1><p>Messages, voice notes, photos and videos in one place. New messages update automatically.</p></div></header>
     {error&&<p className="chat-error" role="alert">{error}</p>}
     <div className="chat-layout"><div className="chat-contacts">{contacts.map(c=><button key={c.id} className={peer?.id===c.id?'active':''} onClick={()=>setSelected(c.id)}><strong>{c.name}</strong><span>{c.department||'CEO'}</span>{c.unread>0&&<b>{c.unread}</b>}</button>)}</div>
       {peer?<Conversation key={peer.id} base={base} token={token} user={user} peer={peer} onRead={onRead}/>:<div className="chat-empty"><MessageSquare/><p>{contacts.length?'Select an employee to open your conversation.':'No contacts available.'}</p></div>}

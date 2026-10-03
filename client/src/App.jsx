@@ -237,17 +237,17 @@ function Modal({ task, close, save }) {
     </div>
   );
 }
-function Progress({ tasks, edit, del, setPriority }) {
+function Progress({ tasks, edit, del, setPriority, alwaysVisible = false }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("today");
   const [date, setDate] = useState(TODAY);
   const [month, setMonth] = useState(TODAY.slice(0, 7));
   const groups = progressGroups(tasks, mode, date, month, TODAY);
   return <section className="panel progress-panel">
-    <button className="soft progress-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+    {!alwaysVisible && <button className="soft progress-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
       <CalendarDays /> Progress <span>{open ? "Hide" : "View tasks & history"}</span>
-    </button>
-    {open && <div className="progress-content">
+    </button>}
+    {(alwaysVisible || open) && <div className="progress-content">
       <div className="progress-filters">
         <div className="progress-presets" aria-label="Progress period">
           {["today", "week", "month", "calendar"].map(value => <button key={value} aria-pressed={mode === value} className={mode === value ? "active" : ""} onClick={() => setMode(value)}>{value === "calendar" ? "Calendar" : value[0].toUpperCase() + value.slice(1)}</button>)}
@@ -398,7 +398,7 @@ function CEO({ employees, tasks, comments, act, readOnly = false }) {
             </p>
           </div>
         </header>
-        <Progress key={emp.id} tasks={tasks.filter(task => task.employeeId === emp.id)} />
+        <Progress key={emp.id} tasks={tasks.filter(task => task.employeeId === emp.id)} alwaysVisible />
         {!readOnly && <section className="filters">
           <label>
             CEO comment date

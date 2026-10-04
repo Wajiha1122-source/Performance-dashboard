@@ -6,6 +6,7 @@ export function progressGroups(tasks, mode, selectedDate, selectedMonth, today) 
   const key = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
   const groups = new Map();
   for (const task of tasks) {
+    if(task.assignedBy&&task.status==='Started')continue;
     const date = (task.taskDate || "").slice(0, 10);
     const matches = mode === "today" ? date === today
       : mode === "week" ? date >= key(weekStart) && date <= key(weekEnd)

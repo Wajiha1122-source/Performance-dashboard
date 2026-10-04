@@ -13,7 +13,9 @@ router.use(wrap(async(req,res,next)=>{
 router.get('/',wrap(async(req,res)=>{
  await query('SELECT sync_task_days()');
  const employees=await query(`SELECT e.id,u.name,e.designation,d.name AS department FROM employees e JOIN users u ON u.id=e.user_id JOIN departments d ON d.id=e.department_id WHERE e.is_active=true AND u.is_active=true ORDER BY u.name`);
- const tasks=await query(`SELECT t.id,t.title,t.description,u.name AS employee,d.name AS department,
+ const tasks=await query(`SELECT t.id,t.title,t.description,u.name AS employee,d.name AS department,t.completion_note AS "completionNote",
+ EXISTS(SELECT 1 FROM task_completion_media cm WHERE cm.task_id=t.id) AS "hasCompletionMedia",
+ (SELECT name FROM task_completion_media cm WHERE cm.task_id=t.id) AS "completionMediaName",
  TO_CHAR(t.task_date,'YYYY-MM-DD') AS "startDate",TO_CHAR(t.due_date,'YYYY-MM-DD') AS "endDate",t.completed_at AS "completedAt",
  CASE WHEN t.completed_at IS NOT NULL THEN 'Complete' WHEN t.task_date>(NOW() AT TIME ZONE 'UTC')::date THEN 'Scheduled'
  WHEN NOW()>=GREATEST(t.created_at,t.task_date::timestamp AT TIME ZONE 'UTC')+interval '24 hours' THEN 'Pending' ELSE 'Started' END AS status

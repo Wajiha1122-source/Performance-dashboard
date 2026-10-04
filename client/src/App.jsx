@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Messages from "./components/Messages";
 import Assignments from './components/Assignments';
+import CompletionForm from './components/CompletionForm';
 import TaskEvidence, {TaskSession} from './components/TaskEvidence';
 import {TaskTitle,TaskAttachment} from './components/TaskControls';
 import { progressGroups, progressDateLabel } from "./data/progress";
@@ -179,9 +180,11 @@ function Task({ task, edit, setPriority }) {
         <p>{task.description}</p>
         {task.assignedBy&&<span className="task-assignment-label">Assigned by {task.assignedBy} · {task.startDate} → {task.endDate}</span>}
         <div className="task-workflow"><span className={`workflow-status ${(task.status||'Started').toLowerCase()}`}>{task.status||'Started'}</span>
-        {edit&&task.taskDate===TODAY&&!task.completedAt&&<button className="soft" disabled={saving} onClick={async()=>{setSaving(true);setError('');try{await complete(task.id)}catch(e){setError(e.message)}finally{setSaving(false)}}}><Check size={15}/>{saving?'Saving…':'Complete'}</button>}</div>
+        {edit&&!task.assignedBy&&task.taskDate===TODAY&&!task.completedAt&&<button className="soft" disabled={saving} onClick={async()=>{setSaving(true);setError('');try{await complete(task.id)}catch(e){setError(e.message)}finally{setSaving(false)}}}><Check size={15}/>{saving?'Saving…':'Complete'}</button>}</div>
         {error&&<p role="alert">{error}</p>}
         <TaskEvidence task={task}/>
+        {task.status==='Complete'&&task.completionNote&&<div className="completion-report"><strong>Completion report</strong><p>{task.completionNote}</p><TaskEvidence task={task} completion/></div>}
+        {edit&&task.assignedBy&&task.taskDate===TODAY&&!task.completionNote&&<CompletionForm task={task}/>}
         <small>
           <Clock3 />{" "}
           {new Date(task.createdAt || Date.now()).toLocaleTimeString([], {
@@ -190,7 +193,7 @@ function Task({ task, edit, setPriority }) {
           })}
         </small>
       </div>
-      {edit && (
+      {edit && !task.assignedBy && (
         <footer>
           <label className="task-priority">
             <Flag />
@@ -378,6 +381,7 @@ function Employee({ user, tasks, comments, act, busy }) {
         </footer>
         {draftError&&<p role="alert">{draftError}</p>}
       </section>
+      <section className="panel"><header><h2>Assigned tasks</h2></header>{today.filter(t=>t.assignedBy&&t.status==='Started').length?today.filter(t=>t.assignedBy&&t.status==='Started').map(t=><Task key={t.id} task={t} edit={setEditing}/>):<p>No started assignments. Pending and completed work appears in progress below.</p>}</section>
       <Progress tasks={tasks} edit={setEditing} setPriority={(id, priority) => act.priority([id], priority)} alwaysVisible />
       {editing && (
         <Modal
@@ -735,7 +739,7 @@ export default function App() {
     completeSso();
   }, []);
   const act = {
-    complete:(id)=>mut('/manage/tasks/'+id+'/complete',{method:'PATCH'},'Task completed',true),
+    complete:(id,report={})=>mut('/manage/tasks/'+id+'/complete',{method:'PATCH',body:JSON.stringify(report)},'Task completed',true),
     add: (v) =>
       mut(
         "/manage/tasks/batch",

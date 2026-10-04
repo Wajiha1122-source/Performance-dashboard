@@ -37,7 +37,12 @@ try{
  await pool.query(`UPDATE tasks SET task_date=((NOW() AT TIME ZONE 'UTC')::date-3),due_date=((NOW() AT TIME ZONE 'UTC')::date-1),created_at=NOW()-interval '73 hours' WHERE id=$1`,[id]);
  dashboard=await call(2,'/manage/bootstrap');let days=dashboard.data.tasks.filter(t=>t.id===id);assert.equal(days.length,4);assert.ok(days.every(t=>t.status==='Pending'));
  assert.equal((await call(1,'/assignments')).data.tasks.find(t=>t.id===id).status,'Pending');
- assert.equal((await call(2,`/manage/tasks/${id}/complete`,'PATCH')).status,200);
+ assert.equal((await call(2,`/manage/tasks/${id}/complete`,'PATCH')).status,422);
+ const proof=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+ assert.equal((await call(2,`/manage/tasks/${id}/complete`,'PATCH',{note:'Completed the work and verified the outcome.',media:{name:'proof.png',data:proof.toString('base64')}})).status,200);
+ const report=(await call(1,'/assignments')).data.tasks.find(t=>t.id===id);assert.equal(report.completionNote,'Completed the work and verified the outcome.');assert.equal(report.hasCompletionMedia,true);
+ for(const actor of [0,1,2]){const r=await fetch(`${base}/manage/tasks/${id}/completion-media`,{headers:{Authorization:`Bearer ${tokens[actor]}`}});assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),proof)}
+ assert.equal((await fetch(`${base}/manage/tasks/${id}/completion-media`,{headers:{Authorization:`Bearer ${tokens[3]}`}})).status,404);
  dashboard=await call(2,'/manage/bootstrap');days=dashboard.data.tasks.filter(t=>t.id===id);
  assert.equal(days.find(t=>t.taskDate===today).status,'Complete');assert.ok(days.filter(t=>t.taskDate!==today).every(t=>t.status==='Pending'));
  assert.equal((await call(1,'/assignments')).data.tasks.find(t=>t.id===id).status,'Complete');

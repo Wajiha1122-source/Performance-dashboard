@@ -19,3 +19,12 @@ test("month supports older history and calendar selects exactly one day", () => 
 test("date headings include weekday and day/month/year", () => {
   assert.equal(progressDateLabel("2026-03-30"), "Monday 30/03/2026");
 });
+test('started assignments stay separate while pending/completed assignments enter progress',()=>{
+ const rows=[
+  {id:1,taskDate:'2026-10-04',assignedBy:'Manager',status:'Started'},
+  {id:2,taskDate:'2026-10-04',assignedBy:'Manager',status:'Pending'},
+  {id:3,taskDate:'2026-10-04',assignedBy:'Manager',status:'Complete'},
+  {id:4,taskDate:'2026-10-04',status:'Started'}
+ ];
+ assert.deepEqual(progressGroups(rows,'today','','','2026-10-04')[0][1].map(t=>t.id),[2,3,4]);
+});

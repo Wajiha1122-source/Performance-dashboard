@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Send} from 'lucide-react';
 import {TaskTitle} from './TaskControls';
+import TaskEvidence from './TaskEvidence';
 import './assignments.css';
 export default function Assignments({base,token}){
  const today=()=>new Date().toISOString().slice(0,10);
@@ -23,5 +24,5 @@ export default function Assignments({base,token}){
  <div className="assignment-dates"><label>Start date<input required type="date" min={today()} value={form.startDate} onChange={e=>change('startDate',e.target.value)}/></label><label>End date<input required type="date" min={form.startDate||today()} value={form.endDate} onChange={e=>change('endDate',e.target.value)}/></label><button className="primary"><Send size={16}/>{saving?'Assigning…':'Assign task'}</button></div>
  </fieldset></form>
  {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
- <section className="panel"><header><h2>Tasks I assigned</h2><small>Updates every 30 seconds</small></header>{loading?<p>Loading…</p>:!tasks.length?<p>No assigned tasks yet.</p>:tasks.map(t=><article className="assignment-item" key={t.id}><div><strong>{t.title} · {t.employee}</strong><p>{t.description}</p><small>{t.startDate} → {t.endDate}{t.status!=='Complete'&&t.endDate<today()?' · Overdue':''}</small></div><span className={`workflow-status ${t.status.toLowerCase()}`}>{t.status}</span></article>)}</section></div>;
+ <section className="panel"><header><h2>Tasks I assigned</h2><small>Updates every 30 seconds</small></header>{loading?<p>Loading…</p>:!tasks.length?<p>No assigned tasks yet.</p>:tasks.map(t=><article className="assignment-item" key={t.id}><div><strong>{t.title} · {t.employee}</strong><p>{t.description}</p><small>{t.startDate} → {t.endDate}{t.status!=='Complete'&&t.endDate<today()?' · Overdue':''}</small>{t.completionNote&&<div className="completion-report"><strong>Employee completion report</strong><p>{t.completionNote}</p><TaskEvidence task={t} completion/></div>}</div><span className={`workflow-status ${t.status.toLowerCase()}`}>{t.status}</span></article>)}</section></div>;
 }

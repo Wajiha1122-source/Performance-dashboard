@@ -94,7 +94,9 @@ async function loadDashboardData(session) {
     `SELECT t.id, t.employee_id AS "employeeId", u.name AS owner, d.name AS department, t.title,
             COALESCE(t.description, '') AS description, td.status, COALESCE(t.reason, '') AS reason, t.priority,
             TO_CHAR(td.day, 'YYYY-MM-DD') AS "taskDate", TO_CHAR(t.task_date,'YYYY-MM-DD') AS "startDate",TO_CHAR(t.due_date,'YYYY-MM-DD') AS "endDate",
-            t.completed_at AS "completedAt",assigner.name AS "assignedBy",t.created_at AS "createdAt",
+            t.completed_at AS "completedAt",assigner.name AS "assignedBy",t.created_at AS "createdAt",t.completion_note AS "completionNote",
+            EXISTS(SELECT 1 FROM task_completion_media cm WHERE cm.task_id=t.id) AS "hasCompletionMedia",
+            (SELECT name FROM task_completion_media cm WHERE cm.task_id=t.id) AS "completionMediaName",
             EXISTS(SELECT 1 FROM task_media m WHERE m.task_id=t.id) AS "hasMedia",
             (SELECT name FROM task_media m WHERE m.task_id=t.id) AS "mediaName",
             EXISTS(SELECT 1 FROM task_edits h WHERE h.task_id=t.id) AS "hasEdits"
@@ -248,13 +250,23 @@ router.post("/tasks", authenticate, authorize("DEPARTMENT_HEAD"), validate(taskS
   }
 });
 
-router.patch('/tasks/:id/complete',authenticate,authorize('EMPLOYEE'),async(req,res,next)=>{try{
-  await query('SELECT sync_task_days()');
-  const result=await query(`UPDATE tasks t SET status='DONE',updated_at=NOW() FROM employees e JOIN users u ON u.id=e.user_id
-    WHERE t.employee_id=e.id AND e.user_id=$1 AND e.is_active=true AND u.is_active=true AND t.id=$2 AND t.task_date<=(NOW() AT TIME ZONE 'UTC')::date RETURNING t.id`,[req.user.sub,req.params.id]);
-  if(!result.rowCount)return res.status(404).json({message:'Active task not found.'});
-  return res.json({data:await loadDashboardData(req.user)});
-}catch(e){next(e)}});
+router.patch('/tasks/:id/complete',authenticate,authorize('EMPLOYEE'),async(req,res,next)=>{
+ const c=await pool.connect();try{
+  const parsed=z.object({note:z.string().trim().max(10000).optional(),media:z.object({name:z.string().min(1).max(180),data:z.string().max(2796204)}).optional()}).safeParse(req.body||{});
+  if(!parsed.success)return res.status(422).json({message:'Check the completion description and attachment.'});
+  let media;try{media=taskMedia(parsed.data.media)}catch(e){return res.status(400).json({message:e.message})}
+  await c.query('BEGIN');
+  const {rows}=await c.query(`SELECT t.* FROM tasks t JOIN employees e ON e.id=t.employee_id JOIN users u ON u.id=e.user_id WHERE t.id=$1 AND e.user_id=$2 AND e.is_active=true AND u.is_active=true AND t.task_date<=(NOW() AT TIME ZONE 'UTC')::date FOR UPDATE OF t`,[req.params.id,req.user.sub]);
+  if(!rows.length){await c.query('ROLLBACK');return res.status(404).json({message:'Active task not found.'})}
+  const task=rows[0];
+  if(task.assigned_by&&!parsed.data.note&&!task.completion_note){await c.query('ROLLBACK');return res.status(422).json({message:'Describe the work completed before submitting this assignment.'})}
+  if(!task.completed_at||!task.completion_note){
+   await c.query("UPDATE tasks SET status='DONE',completion_note=$2,updated_at=NOW() WHERE id=$1",[task.id,parsed.data.note||null]);
+   if(media)await c.query('INSERT INTO task_completion_media(task_id,name,mime,bytes) VALUES($1,$2,$3,$4) ON CONFLICT(task_id) DO NOTHING',[task.id,media.name,media.mime,media.bytes]);
+  }
+  await c.query('COMMIT');return res.json({data:await loadDashboardData(req.user)});
+ }catch(e){await c.query('ROLLBACK');next(e)}finally{c.release()}
+});
 router.patch("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req, res, next) => {
   try {
     if(req.body.title!==undefined&&!titles.includes(req.body.title))return res.status(400).json({message:'Choose a task title from the list.'});
@@ -288,6 +300,13 @@ router.get('/tasks/:id/media',authenticate,async(req,res,next)=>{try{
   const {rows}=await query('SELECT name,mime,bytes FROM task_media WHERE task_id=$1',[req.params.id]);
   if(!rows[0])return res.sendStatus(404);
   res.set('Cache-Control','no-store').set('Content-Disposition','attachment').set('X-Content-Type-Options','nosniff').type(rows[0].mime).send(rows[0].bytes);
+}catch(e){next(e)}});
+router.get('/tasks/:id/completion-media',authenticate,async(req,res,next)=>{try{
+ const scoped=await loadDashboardData(req.user);
+ const assigned=await query('SELECT 1 FROM tasks t JOIN users u ON u.id=t.assigned_by WHERE t.id=$1 AND t.assigned_by=$2 AND u.is_active=true',[req.params.id,req.user.sub]);
+ if(!scoped.tasks.some(t=>t.id===req.params.id)&&!assigned.rowCount)return res.sendStatus(404);
+ const {rows}=await query('SELECT mime,bytes FROM task_completion_media WHERE task_id=$1',[req.params.id]);if(!rows[0])return res.sendStatus(404);
+ res.set('Cache-Control','no-store').set('Content-Disposition','attachment').set('X-Content-Type-Options','nosniff').type(rows[0].mime).send(rows[0].bytes);
 }catch(e){next(e)}});
 router.get('/tasks/:id/history',authenticate,authorize('CEO'),async(req,res,next)=>{try{
   const {rows}=await query('SELECT edited_at AS "editedAt",before_data AS before,after_data AS after FROM task_edits WHERE task_id=$1 ORDER BY id',[req.params.id]);res.set('Cache-Control','no-store').json({history:rows});

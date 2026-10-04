@@ -11,3 +11,8 @@
 .task .task-workflow { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .task .task-workflow button { min-height:30px; padding:5px 10px; border-radius:7px; }
 .task-assignment-label { display:block; font-size:12px; margin:5px 0; }
+.completion-form { margin-top:10px; width:100%; }
+.completion-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+.completion-form textarea { width:100%; min-height:65px; }
+.completion-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.completion-report { background:#f5eef7; color:#482052; padding:10px; border-radius:8px; margin-top:8px; }

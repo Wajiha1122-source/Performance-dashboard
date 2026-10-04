@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_note TEXT;
+CREATE TABLE IF NOT EXISTS task_completion_media(task_id UUID PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,bytes BYTEA NOT NULL CHECK(octet_length(bytes)<=2097152));

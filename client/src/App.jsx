@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Messages from "./components/Messages";
-import TaskEvidence, {TaskSession,TASK_TITLES} from './components/TaskEvidence';
+import TaskEvidence, {TaskSession} from './components/TaskEvidence';
+import {TaskTitle,TaskAttachment} from './components/TaskControls';
 import { progressGroups, progressDateLabel } from "./data/progress";
 import {
   CalendarDays,
@@ -222,9 +223,9 @@ function Modal({ task, close, save }) {
             ×
           </button>
         </header>
-        <label>
-          Title<select required value={t.title} onChange={e=>setT({...t,title:e.target.value})}><option value="">Choose title</option>{!TASK_TITLES.includes(t.title)&&t.title&&<option disabled value={t.title}>{t.title} (choose category)</option>}{TASK_TITLES.map(title=><option key={title}>{title}</option>)}</select>
-        </label>
+        <div>
+          <span>Title</span><TaskTitle value={t.title} onChange={title=>setT({...t,title})}/>
+        </div>
         <label>Task description
           <textarea
             value={t.description}
@@ -320,7 +321,7 @@ function Employee({ user, tasks, comments, act, busy }) {
           <div className="draft" key={r.draftId}>
             <b>T{i + 1}</b>
             <div className="task-draft-fields">
-            <select aria-label={`Title for task ${i+1}`} value={r.title} onChange={e=>setRows(a=>a.map((x,j)=>j===i?{...x,title:e.target.value}:x))}><option value="">Choose task title</option>{TASK_TITLES.map(title=><option key={title}>{title}</option>)}</select>
+            <TaskTitle label={`Title for task ${i+1}`} value={r.title} onChange={title=>setRows(a=>a.map((x,j)=>j===i?{...x,title}:x))}/>
             <textarea
               placeholder="Briefly describe the progress or outcome"
               value={r.description}
@@ -332,7 +333,7 @@ function Employee({ user, tasks, comments, act, busy }) {
                 )
               }
             />
-            <label className="task-upload">Attach photo / video (up to 2 MB)<input type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" onChange={e=>{const file=e.target.files?.[0];if(file&&file.size>2097152){setDraftError('Please choose a file up to 2 MB.');e.target.value='';return}setDraftError('');setRows(a=>a.map((x,j)=>j===i?{...x,file}:x))}}/></label>
+            <TaskAttachment file={r.file} onError={setDraftError} onChange={file=>setRows(a=>a.map((x,j)=>j===i?{...x,file}:x))}/>
             </div>
             <button
               onClick={() =>

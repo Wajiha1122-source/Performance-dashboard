@@ -1,0 +1,18 @@
+.task-title-menu { position:relative; min-width:0; color:#482052; font-size:14px; }
+.task-title-menu summary { display:flex; align-items:center; gap:8px; list-style:none; cursor:pointer; min-height:40px; padding:8px 12px; box-sizing:border-box; border:1px solid #e2d6e5; border-radius:9px; background:#fcfafc; transition:border-color .15s,background .15s; }
+.task-title-menu summary::-webkit-details-marker { display:none; }
+.task-title-menu summary span { flex:1; }
+.task-title-menu summary:hover,.task-title-menu[open] summary { border-color:#aa7bb5; background:#f5edf7; }
+.task-title-menu summary:focus-visible,.task-title-menu button:focus-visible,.task-attachment-control button:focus-visible { outline:2px solid #792a8c; outline-offset:2px; }
+.task-title-options { position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:20; display:grid; padding:5px; max-height:230px; overflow-y:auto; border:1px solid #e2d6e5; border-radius:10px; background:white; box-shadow:0 8px 24px #3914401a; }
+.task-title-options .task-title-option { display:flex; align-items:center; justify-content:space-between; text-align:left; width:100%; height:auto; min-height:34px; padding:7px 10px; border:0; border-radius:6px; background:white; color:#482052; font:inherit; cursor:pointer; }
+.task-title-options .task-title-option:hover,.task-title-options .task-title-option:focus,.task-title-options .task-title-option[aria-pressed=true] { background:#f2e7f5; color:#681878; }
+.task-attachment-control { display:flex; align-items:center; gap:8px; min-width:0; }
+.task-attachment-control input[hidden] { display:none; }
+.task-attachment-control .task-attach-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 32px; width:32px; height:32px; padding:0; border:1px solid #e7dbeb; border-radius:8px; background:#f5eef7; color:#681878; cursor:pointer; }
+.task-attachment-control .task-attach-icon:hover { background:#eaddf0; }
+.task-attachment-hint { color:#8b7a91; font-size:11px; }
+.task-file-chip { display:inline-flex; align-items:center; gap:6px; min-width:0; max-width:100%; padding:3px 6px 3px 9px; border-radius:7px; background:#f5eef7; color:#681878; font-size:12px; }
+.task-file-chip > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task-file-chip > svg { flex-shrink:0; }
+.task-file-chip button { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; flex-shrink:0; border:0; background:transparent; color:inherit; }

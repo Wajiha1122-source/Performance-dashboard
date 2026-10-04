@@ -27,8 +27,8 @@ router.get('/contacts',wrap(async(req,res) => {
     (SELECT count(*)::int FROM private_messages m WHERE m.sender_id=u.id AND m.recipient_id=$1 AND m.read_at IS NULL) AS unread
     FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN employees e ON e.user_id=u.id
     LEFT JOIN departments d ON d.id=e.department_id WHERE u.is_active=true AND
-    (($2='CEO' AND r.name='EMPLOYEE' AND e.is_active=true) OR ($2='EMPLOYEE' AND r.name='CEO'))
-    ORDER BY d.name NULLS FIRST,u.name`,[req.chatUser.id,req.chatUser.role]);
+    u.id<>$1 AND (r.name='CEO' OR (r.name='EMPLOYEE' AND e.is_active=true))
+    ORDER BY d.name NULLS FIRST,u.name`,[req.chatUser.id]);
   res.json({contacts:rows});
 }));
 router.param('peer', (req,res,next,peer) => {
@@ -39,7 +39,7 @@ router.use('/:peer',wrap(async(req,res,next) => {
   const {rows} = await query(`SELECT u.id,r.name AS role FROM users u JOIN roles r ON r.id=u.role_id
     WHERE u.id=$1 AND u.is_active=true AND (r.name='CEO' OR (r.name='EMPLOYEE' AND EXISTS
     (SELECT 1 FROM employees e WHERE e.user_id=u.id AND e.is_active=true)))`,[req.params.peer]);
-  if (!rows[0] || rows[0].role === req.chatUser.role || !['CEO','EMPLOYEE'].includes(rows[0].role))
+  if (!rows[0] || rows[0].id === req.chatUser.id || !['CEO','EMPLOYEE'].includes(rows[0].role))
     return res.status(403).json({message:'This conversation is not available.'});
   next();
 }));

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Messages from "./components/Messages";
+import TaskEvidence, {TaskSession,TASK_TITLES} from './components/TaskEvidence';
 import { progressGroups, progressDateLabel } from "./data/progress";
 import {
   CalendarDays,
@@ -23,6 +24,7 @@ const BASE = (
   import.meta.env.VITE_API_BASE || "http://localhost:5000/api"
 ).replace(/\/$/, "");
 const TODAY = new Date().toISOString().slice(0, 10);
+const newTaskDraft=()=>({draftId:crypto.randomUUID(),title:'',description:''});
 const day = (d) =>
   new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -158,7 +160,7 @@ function Empty({ title, text }) {
     </div>
   );
 }
-function Task({ task, edit, del, setPriority }) {
+function Task({ task, edit, setPriority }) {
   return (
     <article className={`task ${task.priority || "normal"}`}>
       <i />
@@ -168,7 +170,9 @@ function Task({ task, edit, del, setPriority }) {
             <em>{task.priority}</em>
           )}
         </header>
+        <strong>{task.title}</strong>
         <p>{task.description}</p>
+        <TaskEvidence task={task}/>
         <small>
           <Clock3 />{" "}
           {new Date(task.createdAt || Date.now()).toLocaleTimeString([], {
@@ -195,9 +199,6 @@ function Task({ task, edit, del, setPriority }) {
           <button onClick={() => edit(task)}>
             <Edit3 />
           </button>
-          <button onClick={() => del(task.id)}>
-            <Trash2 />
-          </button>
         </footer>
       )}
     </article>
@@ -205,14 +206,14 @@ function Task({ task, edit, del, setPriority }) {
 }
 function Modal({ task, close, save }) {
   const [t, setT] = useState(task);
+  const [saving,setSaving]=useState(false),[error,setError]=useState('');
   return (
     <div className="shade">
       <form
         className="modal"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          save(t);
-          close();
+          setSaving(true);setError('');try{await save(t);close()}catch(e){setError(e.message)}finally{setSaving(false)}
         }}
       >
         <header>
@@ -222,14 +223,17 @@ function Modal({ task, close, save }) {
           </button>
         </header>
         <label>
-          Task description
+          Title<select required value={t.title} onChange={e=>setT({...t,title:e.target.value})}><option value="">Choose title</option>{!TASK_TITLES.includes(t.title)&&t.title&&<option disabled value={t.title}>{t.title} (choose category)</option>}{TASK_TITLES.map(title=><option key={title}>{title}</option>)}</select>
+        </label>
+        <label>Task description
           <textarea
             value={t.description}
             onChange={(e) => setT({ ...t, description: e.target.value })}
             required
           />
         </label>
-        <button className="primary">
+        {error&&<p role="alert">{error}</p>}
+        <button className="primary" disabled={saving}>
           <Check />
           Save changes
         </button>
@@ -237,7 +241,7 @@ function Modal({ task, close, save }) {
     </div>
   );
 }
-function Progress({ tasks, edit, del, setPriority, alwaysVisible = false }) {
+function Progress({ tasks, edit, setPriority, alwaysVisible = false }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("today");
   const [date, setDate] = useState(TODAY);
@@ -258,7 +262,7 @@ function Progress({ tasks, edit, del, setPriority, alwaysVisible = false }) {
       </div>
       {groups.length ? groups.map(([dateKey, dayTasks]) => <section className="progress-day" key={dateKey}>
         <header><h3>{progressDateLabel(dateKey)}</h3><span>{dayTasks.length} {dayTasks.length === 1 ? "task" : "tasks"}</span></header>
-        <div className="tasks">{dayTasks.map(task => <Task key={task.id} task={task} edit={dateKey === TODAY ? edit : undefined} del={del} setPriority={setPriority} />)}</div>
+        <div className="tasks">{dayTasks.map(task => <Task key={task.id} task={task} edit={edit} setPriority={setPriority} />)}</div>
       </section>) : <Empty title="No progress for this period" text="Choose another date or period to see saved tasks." />}
     </div>}
   </section>;
@@ -269,7 +273,8 @@ function Employee({ user, tasks, comments, act, busy }) {
   const today = tasks.filter(
       (t) => (t.taskDate || TODAY).slice(0, 10) === TODAY,
     );
-  const [rows, setRows] = useState([{ description: "" }]),
+  const [draftError,setDraftError]=useState(''),[submitting,setSubmitting]=useState(false);
+  const [rows, setRows] = useState(()=>[newTaskDraft()]),
     [editing, setEditing] = useState(null);
   return (
     <div className="page">
@@ -312,8 +317,10 @@ function Employee({ user, tasks, comments, act, busy }) {
           <em>{rows.length} entries</em>
         </header>
         {rows.map((r, i) => (
-          <div className="draft">
+          <div className="draft" key={r.draftId}>
             <b>T{i + 1}</b>
+            <div className="task-draft-fields">
+            <select aria-label={`Title for task ${i+1}`} value={r.title} onChange={e=>setRows(a=>a.map((x,j)=>j===i?{...x,title:e.target.value}:x))}><option value="">Choose task title</option>{TASK_TITLES.map(title=><option key={title}>{title}</option>)}</select>
             <textarea
               placeholder="Briefly describe the progress or outcome"
               value={r.description}
@@ -325,6 +332,8 @@ function Employee({ user, tasks, comments, act, busy }) {
                 )
               }
             />
+            <label className="task-upload">Attach photo / video (up to 2 MB)<input type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" onChange={e=>{const file=e.target.files?.[0];if(file&&file.size>2097152){setDraftError('Please choose a file up to 2 MB.');e.target.value='';return}setDraftError('');setRows(a=>a.map((x,j)=>j===i?{...x,file}:x))}}/></label>
+            </div>
             <button
               onClick={() =>
                 rows.length > 1 && setRows((a) => a.filter((_, j) => j !== i))
@@ -337,32 +346,29 @@ function Employee({ user, tasks, comments, act, busy }) {
         <footer className="form-actions">
           <button
             className="soft"
-            onClick={() => setRows([...rows, { description: "" }])}
+            disabled={submitting} onClick={() => setRows([...rows, newTaskDraft()])}
           >
             <Plus />
             Add another task
           </button>
           <button
             className="primary"
+            disabled={submitting}
             onClick={async () => {
-              const v = rows.filter((x) => x.description.trim());
-              if (v.length) {
-                await act.add(
-                  v.map((task, index) => ({
-                    ...task,
-                    title: `Task ${index + 1}`,
-                  })),
-                );
-                setRows([{ description: "" }]);
-              }
+              setDraftError('');
+              if(rows.some(x=>!x.title||!x.description.trim())){setDraftError('Choose a title and enter a description for every task.');return}
+              if(rows.reduce((n,r)=>n+(r.file?.size||0),0)>10485760){setDraftError('Attachments must total 10 MB or less.');return}
+              setSubmitting(true);
+              try{const v=await Promise.all(rows.map(async({file,title,description})=>({title,description,...(file?{media:{name:file.name,data:await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(Error('Unable to read attachment'));r.readAsDataURL(file)})}}:{})})));await act.add(v);setRows([newTaskDraft()])}catch(e){setDraftError(e.message)}finally{setSubmitting(false)}
             }}
           >
             <Send />
             Submit today’s progress
           </button>
         </footer>
+        {draftError&&<p role="alert">{draftError}</p>}
       </section>
-      <Progress tasks={tasks} edit={setEditing} del={act.del} setPriority={(id, priority) => act.priority([id], priority)} />
+      <Progress tasks={tasks} edit={setEditing} setPriority={(id, priority) => act.priority([id], priority)} />
       {editing && (
         <Modal
           task={editing}
@@ -656,17 +662,20 @@ export default function App() {
       await keepLoaderVisible(startedAt);
       setBusy(false);
     },
-    mut = async (path, o, msg) => {
+    mut = async (path, o, msg, propagate = false) => {
       const startedAt = Date.now();
+      let failure;
       try {
         setBusy(true);
         apply((await req(path, o)).data);
         note(msg);
       } catch (x) {
         note(x.message);
+        failure=x;
       }
       await keepLoaderVisible(startedAt);
       setBusy(false);
+      if(failure&&propagate)throw failure;
     };
   useEffect(() => {
     // React StrictMode replays mount effects; consume the handoff only once.
@@ -710,16 +719,15 @@ export default function App() {
         "/manage/tasks/batch",
         { method: "POST", body: JSON.stringify({ tasks: v, date: TODAY }) },
         "Progress saved",
+        true,
       ),
     edit: (t) =>
       mut(
         "/manage/tasks/" + t.id,
-        { method: "PATCH", body: JSON.stringify(t) },
+        { method: "PATCH", body: JSON.stringify({title:t.title,description:t.description}) },
         "Task updated",
+        true,
       ),
-    del: (id) =>
-      confirm("Delete this task?") &&
-      mut("/manage/tasks/" + id, { method: "DELETE" }, "Task deleted"),
     priority: (ids, priority) =>
       mut(
         "/manage/tasks/priority",
@@ -749,7 +757,7 @@ export default function App() {
     );
   return (
     <>
-      <Layout
+      <TaskSession.Provider value={{base:BASE,token,role:user.role}}><Layout
         user={user}
         view={view}
         setView={setView}
@@ -769,7 +777,7 @@ export default function App() {
           <Employee user={user} tasks={tasks} comments={comments} act={act} busy={busy} />
         )}
         {toast && <div className="toast">{toast}</div>}
-      </Layout>
+      </Layout></TaskSession.Provider>
       {busy && <PremiumLoader label="Saving your changes…" />}
     </>
   );

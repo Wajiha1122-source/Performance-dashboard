@@ -21,6 +21,7 @@ app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || "h
 app.use(morgan(":method :safe-url :status :response-time ms - :res[content-length]"));
 app.use('/api/messages', messageRoutes);
 app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
+app.use('/api/manage/tasks/batch', express.json({ limit: '15mb' }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {

@@ -25,7 +25,7 @@ try{
   const sent=await call(1,`/${ids[0]}`,'POST',{clientId,body:'Private test'});assert.equal(sent.status,201);assert.ok(sent.data.message.id);
   assert.equal((await call(1,`/${ids[0]}`,'POST',{clientId,body:'Private test'})).status,201);
   const messages=await call(0,`/${ids[1]}`);assert.equal(messages.data.messages.length,1);
-  assert.equal((await call(2,`/${ids[1]}`)).status,403);
+  assert.equal((await call(2,`/${ids[1]}`)).data.messages.length,0);
   assert.equal((await call(2,`/${ids[0]}`)).data.messages.length,0);
   const reply=await call(0,`/${ids[1]}`,'POST',{clientId:randomUUID(),body:'CEO reply'});
   assert.equal(reply.status,201);
@@ -33,7 +33,12 @@ try{
   assert.equal(received.data.messages.length,1);
   assert.equal(received.data.messages[0].body,'CEO reply');
   assert.equal(received.data.messages[0].recipientId,ids[1]);
-  assert.equal((await call(1,`/${ids[2]}`,'POST',{clientId:randomUUID(),body:'Forbidden'})).status,403);
+  const colleague=await call(1,`/${ids[2]}`,'POST',{clientId:randomUUID(),body:'Hello colleague'});assert.equal(colleague.status,201);
+  assert.equal((await call(2,`/${ids[1]}`)).data.messages[0].body,'Hello colleague');
+  assert.equal((await call(2,`/${ids[1]}`,'POST',{clientId:randomUUID(),body:'Colleague reply'})).status,201);
+  assert.equal((await call(1,`/${ids[2]}`)).data.messages.at(-1).body,'Colleague reply');
+  const colleagues=(await call(1,'/contacts')).data.contacts;assert.ok(colleagues.some(c=>c.id===ids[2]));assert.ok(!colleagues.some(c=>c.id===ids[1]));
+  assert.equal((await call(1,`/${ids[1]}`,'POST',{clientId:randomUUID(),body:'Self'})).status,403);
   let contacts=await call(0,'/contacts');assert.equal(contacts.data.contacts.find(c=>c.id===ids[1]).unread,1);
   assert.equal((await call(0,`/${ids[1]}/read`,'POST',{ids:[sent.data.message.id]})).status,200);
   contacts=await call(0,'/contacts');assert.equal(contacts.data.contacts.find(c=>c.id===ids[1]).unread,0);
@@ -59,6 +64,27 @@ try{
     assert.equal((await fetch(`${url}/${ids[recipient]}/media`,{...options,headers:{...options.headers,'X-Client-Id':randomUUID()},body:Buffer.from('<svg>not supported</svg>')})).status,400);
   }
   console.log('PASS: two-way gallery uploads, history visibility, sender and recipient downloads, duplicate protection, unrelated-user denial and invalid-media rejection.');
+  const manage=url.replace(/\/messages$/,'/manage');
+  async function taskCall(actor,path,method='GET',body){
+    const r=await fetch(manage+path,{method,headers:{Authorization:`Bearer ${tokens[actor]}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+    return {status:r.status,data:await r.json().catch(()=>({}))};
+  }
+  assert.equal((await taskCall(1,'/tasks/batch','POST',{tasks:[{title:'Invalid',description:'Test'}]})).status,422);
+  const submitted=await taskCall(1,'/tasks/batch','POST',{tasks:[{title:'Development',description:'Original description',media:{name:'evidence.png',data:image.toString('base64')}}]});
+  assert.equal(submitted.status,201);const task=submitted.data.data.tasks.find(t=>t.description==='Original description');assert.ok(task.hasMedia);assert.equal(task.hasEdits,false);
+  for(const actor of [0,1]){
+    const r=await fetch(`${manage}/tasks/${task.id}/media`,{headers:{Authorization:`Bearer ${tokens[actor]}`}});assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),image);
+  }
+  assert.equal((await fetch(`${manage}/tasks/${task.id}/media`,{headers:{Authorization:`Bearer ${tokens[2]}`}})).status,404);
+  assert.equal((await taskCall(1,`/tasks/${task.id}`,'DELETE')).status,403);
+  assert.equal((await taskCall(1,`/tasks/${task.id}`,'PATCH',{title:'Operations',description:'Updated description'})).status,200);
+  let edits=await taskCall(0,`/tasks/${task.id}/history`);assert.equal(edits.data.history.length,1);assert.equal(edits.data.history[0].before.description,'Original description');assert.equal(edits.data.history[0].after.title,'Operations');
+  assert.equal((await taskCall(1,`/tasks/${task.id}/history`)).status,403);
+  await taskCall(1,`/tasks/${task.id}`,'PATCH',{title:'Operations',description:'Updated description'});
+  assert.equal((await taskCall(0,`/tasks/${task.id}/history`)).data.history.length,1);
+  await taskCall(2,`/tasks/${task.id}`,'PATCH',{title:'Sales',description:'Unauthorized'});
+  assert.equal((await taskCall(0,`/tasks/${task.id}/history`)).data.history.length,1);
+  console.log('PASS: task title validation, atomic media submission, authorized downloads, deletion denied, before/after history, no-op and unauthorized edits do not add history.');
   await pool.query('UPDATE users SET is_active=false WHERE id=$1',[ids[1]]);
   assert.equal((await call(1,'/contacts')).status,403);
   console.log('PASS: two-way text delivery, new-message cursors, duplicate protection, unread counts, read receipts, voice byte storage/access, invalid payloads, inactive-account rejection.');

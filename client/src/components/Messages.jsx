@@ -170,8 +170,8 @@ function Conversation({base,token,user,peer,onRead}) {
 }
 export default function Messages({base,token,user,contacts,onRead,error}) {
   const [selected,setSelected]=useState('');
-  const peer=contacts.find(c=>c.id===selected)||(user.role==='EMPLOYEE'?contacts[0]:null);
-  return <div className="page"><header className="heading"><div><small>PRIVATE MESSAGES</small><h1>{user.role==='CEO'?'Team conversations':'Chat with the CEO'}</h1><p>Messages, voice notes, photos and videos in one place. New messages update automatically.</p></div></header>
+  const peer=contacts.find(c=>c.id===selected)||null;
+  return <div className="page"><header className="heading"><div><small>PRIVATE MESSAGES</small><h1>Team conversations</h1><p>Choose a colleague or the CEO. Messages, voice notes, photos and videos update automatically.</p></div></header>
     {error&&<p className="chat-error" role="alert">{error}</p>}
     <div className="chat-layout"><div className="chat-contacts">{contacts.map(c=><button key={c.id} className={peer?.id===c.id?'active':''} onClick={()=>setSelected(c.id)}><strong>{c.name}</strong><span>{c.department||'CEO'}</span>{c.unread>0&&<b>{c.unread}</b>}</button>)}</div>
       {peer?<Conversation key={peer.id} base={base} token={token} user={user} peer={peer} onRead={onRead}/>:<div className="chat-empty"><MessageSquare/><p>{contacts.length?'Select an employee to open your conversation.':'No contacts available.'}</p></div>}

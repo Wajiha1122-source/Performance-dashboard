@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Messages from "./components/Messages";
+import Assignments from './components/Assignments';
 import TaskEvidence, {TaskSession} from './components/TaskEvidence';
 import {TaskTitle,TaskAttachment} from './components/TaskControls';
 import { progressGroups, progressDateLabel } from "./data/progress";
@@ -24,7 +25,7 @@ import {
 const BASE = (
   import.meta.env.VITE_API_BASE || "http://localhost:5000/api"
 ).replace(/\/$/, "");
-const TODAY = new Date().toISOString().slice(0, 10);
+let TODAY = new Date().toISOString().slice(0, 10);
 const newTaskDraft=()=>({draftId:crypto.randomUUID(),title:'',description:''});
 const day = (d) =>
   new Intl.DateTimeFormat("en-GB", {
@@ -98,7 +99,7 @@ function Login({ login, busy }) {
     </main>
   );
 }
-function Layout({ user, logout, children, view, setView, unread, canViewDepartments }) {
+function Layout({ user, logout, children, view, setView, unread, canViewDepartments, canAssign }) {
   return (
     <div className="shell">
       <aside>
@@ -118,6 +119,7 @@ function Layout({ user, logout, children, view, setView, unread, canViewDepartme
             <MessageSquare size={16}/> Messages {unread > 0 && <b className="unread-badge">{unread}</b>}
           </button>
           {canViewDepartments && <button onClick={() => setView('departments')} aria-current={view === 'departments' ? 'page' : undefined}><Eye size={16}/> Department performance</button>}
+          {canAssign&&<button onClick={()=>setView('assignments')} aria-current={view==='assignments'?'page':undefined}><Send size={16}/>Assign tasks</button>}
         </nav>
         <div className="user">
           <b>{ini(user.name)}</b>
@@ -162,6 +164,8 @@ function Empty({ title, text }) {
   );
 }
 function Task({ task, edit, setPriority }) {
+  const {complete}=React.useContext(TaskSession);
+  const [saving,setSaving]=useState(false),[error,setError]=useState('');
   return (
     <article className={`task ${task.priority || "normal"}`}>
       <i />
@@ -173,6 +177,10 @@ function Task({ task, edit, setPriority }) {
         </header>
         <strong>{task.title}</strong>
         <p>{task.description}</p>
+        {task.assignedBy&&<span className="task-assignment-label">Assigned by {task.assignedBy} · {task.startDate} → {task.endDate}</span>}
+        <div className="task-workflow"><span className={`workflow-status ${(task.status||'Started').toLowerCase()}`}>{task.status||'Started'}</span>
+        {edit&&task.taskDate===TODAY&&!task.completedAt&&<button className="soft" disabled={saving} onClick={async()=>{setSaving(true);setError('');try{await complete(task.id)}catch(e){setError(e.message)}finally{setSaving(false)}}}><Check size={15}/>{saving?'Saving…':'Complete'}</button>}</div>
+        {error&&<p role="alert">{error}</p>}
         <TaskEvidence task={task}/>
         <small>
           <Clock3 />{" "}
@@ -274,6 +282,7 @@ function Employee({ user, tasks, comments, act, busy }) {
   const today = tasks.filter(
       (t) => (t.taskDate || TODAY).slice(0, 10) === TODAY,
     );
+  const submittedToday=today.some(t=>!t.assignedBy&&t.createdAt?.slice(0,10)===TODAY);
   const [draftError,setDraftError]=useState(''),[submitting,setSubmitting]=useState(false);
   const [rows, setRows] = useState(()=>[newTaskDraft()]),
     [editing, setEditing] = useState(null);
@@ -296,7 +305,7 @@ function Employee({ user, tasks, comments, act, busy }) {
         <Stat
           icon={Check}
           label="Submitted"
-          value={today.length ? "Yes" : "Not yet"}
+          value={submittedToday ? "Yes" : "Not yet"}
           note="Daily status"
         />
       </div>
@@ -369,7 +378,7 @@ function Employee({ user, tasks, comments, act, busy }) {
         </footer>
         {draftError&&<p role="alert">{draftError}</p>}
       </section>
-      <Progress tasks={tasks} edit={setEditing} setPriority={(id, priority) => act.priority([id], priority)} />
+      <Progress tasks={tasks} edit={setEditing} setPriority={(id, priority) => act.priority([id], priority)} alwaysVisible />
       {editing && (
         <Modal
           task={editing}
@@ -465,7 +474,7 @@ function CEO({ employees, tasks, comments, act, readOnly = false }) {
       </div>
     );
   const todayEmployeeIds = new Set(tasks
-    .filter((t) => (t.taskDate || TODAY).slice(0, 10) === TODAY)
+    .filter((t) => !t.assignedBy && t.createdAt?.slice(0,10)===TODAY && t.taskDate===TODAY)
     .map((t) => t.employeeId));
   const scopedEmployees = department
     ? employees.filter((employee) => employee.department === department)
@@ -589,6 +598,7 @@ export default function App() {
   const [view,setView] = useState('progress');
   const [contacts,setContacts] = useState([]);
   const [viewDepartments,setViewDepartments] = useState([]);
+  const [canAssign,setCanAssign]=useState(false);
   const [chatError,setChatError] = useState('');
   const [initialLoading, setInitialLoading] = useState(true),
     [user, setUser] = useState(null),
@@ -636,6 +646,8 @@ export default function App() {
       return d;
     },
     apply = (d) => {
+      TODAY=new Date().toISOString().slice(0,10);
+      setCanAssign(!!d.canAssign);
       setViewDepartments(d.viewDepartments || []);
       setEmployees(d.employees || []);
       setTasks(d.tasks || []);
@@ -678,6 +690,14 @@ export default function App() {
       setBusy(false);
       if(failure&&propagate)throw failure;
     };
+  useEffect(()=>{
+    if(!token||busy)return;
+    let active=true,pending=false;
+    const refresh=async()=>{if(pending||document.hidden)return;pending=true;try{const d=await req('/manage/bootstrap');if(active)apply(d)}catch{/* Keep existing data; retry on the next refresh. */}finally{pending=false}};
+    refresh();const interval=setInterval(refresh,30000);
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{active=false;clearInterval(interval);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)};
+  },[token,busy]);
   useEffect(() => {
     // React StrictMode replays mount effects; consume the handoff only once.
     if (ssoStarted.current) return;
@@ -715,6 +735,7 @@ export default function App() {
     completeSso();
   }, []);
   const act = {
+    complete:(id)=>mut('/manage/tasks/'+id+'/complete',{method:'PATCH'},'Task completed',true),
     add: (v) =>
       mut(
         "/manage/tasks/batch",
@@ -758,21 +779,23 @@ export default function App() {
     );
   return (
     <>
-      <TaskSession.Provider value={{base:BASE,token,role:user.role}}><Layout
+      <TaskSession.Provider value={{base:BASE,token,role:user.role,complete:act.complete}}><Layout
         user={user}
         view={view}
         setView={setView}
         unread={contacts.reduce((sum,contact)=>sum+contact.unread,0)}
         canViewDepartments={user.role !== 'CEO' && viewDepartments.length > 0}
+        canAssign={canAssign}
         logout={() => {
           setUser(null);
           setToken("");
           setContacts([]);
           setViewDepartments([]);
+          setCanAssign(false);
           setView('progress');
         }}
       >
-        {view === 'messages' ? <Messages base={BASE} token={token} user={user} contacts={contacts} onRead={refreshContacts} error={chatError}/> : view === 'departments' && viewDepartments.length > 0 ? <CEO key="viewer" employees={employees.filter(e=>viewDepartments.includes(e.department))} tasks={tasks} comments={{}} act={act} readOnly/> : user.role === "CEO" ? (
+        {view==='assignments'&&canAssign?<Assignments base={BASE} token={token}/>:view === 'messages' ? <Messages base={BASE} token={token} user={user} contacts={contacts} onRead={refreshContacts} error={chatError}/> : view === 'departments' && viewDepartments.length > 0 ? <CEO key="viewer" employees={employees.filter(e=>viewDepartments.includes(e.department))} tasks={tasks} comments={{}} act={act} readOnly/> : user.role === "CEO" ? (
           <CEO employees={employees} tasks={tasks} comments={comments} act={act} />
         ) : (
           <Employee user={user} tasks={tasks} comments={comments} act={act} busy={busy} />

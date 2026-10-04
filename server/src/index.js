@@ -10,6 +10,7 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import managementRoutes from "./routes/managementRoutes.js";
 import ssoRoutes from "./routes/ssoRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import assignmentRoutes from './routes/assignmentRoutes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -32,6 +33,7 @@ app.use(ssoRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/manage", managementRoutes);
+app.use('/api/assignments',assignmentRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: `Route not found: ${req.method} ${req.path}` });

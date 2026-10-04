@@ -1,0 +1,13 @@
+.assignment-form fieldset { display:grid; gap:12px; padding:0; margin:0; border:0; min-width:0; }
+.assignment-form label { display:grid; gap:6px; font-size:13px; }
+.assignment-form select { width:100%; border:1px solid #e2d6e5; border-radius:8px; padding:10px; background:#fcfafc; color:#482052; font:inherit; }
+.assignment-dates { display:flex; align-items:end; gap:12px; flex-wrap:wrap; }
+.assignment-item { display:flex; align-items:start; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #eee5f0; }
+.assignment-item p { margin:5px 0; white-space:pre-wrap; }
+.workflow-status { display:inline-flex; padding:4px 9px; border-radius:20px; font-size:12px; background:#f0e5f5; color:#69217a; white-space:nowrap; }
+.workflow-status.pending { background:#fff1c2; color:#785300; }
+.workflow-status.complete { background:#ddf3e5; color:#24613c; }
+.workflow-status.scheduled { background:#eef0f4; color:#525868; }
+.task .task-workflow { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.task .task-workflow button { min-height:30px; padding:5px 10px; border-radius:7px; }
+.task-assignment-label { display:block; font-size:12px; margin:5px 0; }

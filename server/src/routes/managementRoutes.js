@@ -67,6 +67,7 @@ function today() {
 }
 
 async function loadDashboardData(session) {
+  await query('SELECT sync_task_days()');
   const departments = await query(
     `SELECT d.id, d.name, d.code, COALESCE(u.name, 'Department Head') AS head
      FROM departments d
@@ -91,12 +92,15 @@ async function loadDashboardData(session) {
 
   const tasks = await query(
     `SELECT t.id, t.employee_id AS "employeeId", u.name AS owner, d.name AS department, t.title,
-            COALESCE(t.description, '') AS description, t.status, COALESCE(t.reason, '') AS reason, t.priority,
-            TO_CHAR(t.task_date, 'YYYY-MM-DD') AS "taskDate", t.created_at AS "createdAt",
+            COALESCE(t.description, '') AS description, td.status, COALESCE(t.reason, '') AS reason, t.priority,
+            TO_CHAR(td.day, 'YYYY-MM-DD') AS "taskDate", TO_CHAR(t.task_date,'YYYY-MM-DD') AS "startDate",TO_CHAR(t.due_date,'YYYY-MM-DD') AS "endDate",
+            t.completed_at AS "completedAt",assigner.name AS "assignedBy",t.created_at AS "createdAt",
             EXISTS(SELECT 1 FROM task_media m WHERE m.task_id=t.id) AS "hasMedia",
             (SELECT name FROM task_media m WHERE m.task_id=t.id) AS "mediaName",
             EXISTS(SELECT 1 FROM task_edits h WHERE h.task_id=t.id) AS "hasEdits"
      FROM tasks t
+     JOIN task_days td ON td.task_id=t.id
+     LEFT JOIN users assigner ON assigner.id=t.assigned_by
      JOIN employees e ON e.id = t.employee_id
      JOIN users u ON u.id = e.user_id
      JOIN departments d ON d.id = t.department_id
@@ -113,7 +117,7 @@ async function loadDashboardData(session) {
   return scopeDashboard({
     departments: departments.rows,
     employees: employees.rows,
-    tasks: tasks.rows.map((task) => ({ ...task, status: reverseTaskStatusMap[task.status] })),
+    tasks: tasks.rows,
     attendance: Object.fromEntries(attendance.rows.map((row) => [row.employeeId, row.status])),
     comments: Object.fromEntries(remarks.rows.map((row) => [`${row.employeeId}:${row.date}`, row.remark]))
   }, session);
@@ -244,16 +248,20 @@ router.post("/tasks", authenticate, authorize("DEPARTMENT_HEAD"), validate(taskS
   }
 });
 
+router.patch('/tasks/:id/complete',authenticate,authorize('EMPLOYEE'),async(req,res,next)=>{try{
+  await query('SELECT sync_task_days()');
+  const result=await query(`UPDATE tasks t SET status='DONE',updated_at=NOW() FROM employees e JOIN users u ON u.id=e.user_id
+    WHERE t.employee_id=e.id AND e.user_id=$1 AND e.is_active=true AND u.is_active=true AND t.id=$2 AND t.task_date<=(NOW() AT TIME ZONE 'UTC')::date RETURNING t.id`,[req.user.sub,req.params.id]);
+  if(!result.rowCount)return res.status(404).json({message:'Active task not found.'});
+  return res.json({data:await loadDashboardData(req.user)});
+}catch(e){next(e)}});
 router.patch("/tasks/:id", authenticate, authorize("EMPLOYEE"), async (req, res, next) => {
   try {
     if(req.body.title!==undefined&&!titles.includes(req.body.title))return res.status(400).json({message:'Choose a task title from the list.'});
     if(req.body.description!==undefined&&(typeof req.body.description!=='string'||!req.body.description.trim()||req.body.description.length>10000))return res.status(400).json({message:'Enter a task description (up to 10,000 characters).'});
     const fields = [];
     const values = [];
-    if (req.body.status) {
-      values.push(taskStatusMap[req.body.status] || req.body.status);
-      fields.push(`status = $${values.length}`);
-    }
+    if(req.body.status!==undefined)return res.status(400).json({message:'Use the Complete button to finish a task. Started and Pending are automatic.'});
     if (typeof req.body.description === "string") {
       values.push(req.body.description);
       fields.push(`description = $${values.length}`);
